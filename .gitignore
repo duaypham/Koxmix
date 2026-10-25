@@ -1,0 +1,11 @@
+.vs/
+bin/
+obj/
+*.user
+Downloads/
+BrowserData/
+*.exe
+*.zip
+app_cookies.txt
+koxmix_config.json
+app_useragent.txt
