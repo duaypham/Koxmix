@@ -28,8 +28,11 @@ namespace Koxmix.Downloaders
 
             if (isPlaylist && !string.IsNullOrEmpty(playlistId))
             {
-                var existingZip = new DirectoryInfo(targetFolder).GetFiles($"*[{playlistId}]*.zip").FirstOrDefault();
-                var existingDir = new DirectoryInfo(targetFolder).GetDirectories($"*[{playlistId}]*").FirstOrDefault();
+                string plTag = ctx.IsMp3 ? $"[{playlistId}_MP3]" : $"[{playlistId}]";
+                string plPrefix = ctx.IsMp3 ? "[Playlist MP3]" : "[Playlist]";
+
+                var existingZip = new DirectoryInfo(targetFolder).GetFiles($"*{plTag}*.zip").FirstOrDefault();
+                var existingDir = new DirectoryInfo(targetFolder).GetDirectories($"*{plTag}*").FirstOrDefault();
 
                 if (existingZip != null || (existingDir != null && existingDir.GetFiles().Length > 0))
                 {
@@ -43,11 +46,14 @@ namespace Koxmix.Downloaders
                         ctx.OnStatusChanged?.Invoke("Completed (Exists)");
                         if (existingZip != null)
                         {
-                            ctx.OnSuccess?.Invoke($"[Playlist] {Path.GetFileNameWithoutExtension(existingZip.Name)}", FormatUtils.FormatFileSize(existingZip.Length), existingZip.FullName);
+                            string rawZipName = Path.GetFileNameWithoutExtension(existingZip.Name);
+                            int idx = rawZipName.LastIndexOf(" [");
+                            string cleanPlName = idx > 0 ? rawZipName.Substring(0, idx) : rawZipName;
+                            ctx.OnSuccess?.Invoke($"{plPrefix} {cleanPlName}", FormatUtils.FormatFileSize(existingZip.Length), existingZip.FullName);
                         }
                         else
                         {
-                            ctx.OnSuccess?.Invoke($"[Playlist] {existingDir.Name}", "Multiple files", existingDir.FullName);
+                            ctx.OnSuccess?.Invoke($"{plPrefix} {existingDir.Name}", "Multiple files", existingDir.FullName);
                         }
                         return;
                     }
@@ -121,6 +127,7 @@ namespace Koxmix.Downloaders
             {
                 options.ExtractAudio = true;
                 options.AudioFormat = AudioConversionFormat.Mp3;
+                options.EmbedThumbnail = true;
                 options.Format = "bestaudio/best";
             }
             else
@@ -139,7 +146,8 @@ namespace Koxmix.Downloaders
 
             if (isPlaylist)
             {
-                options.Output = Path.Combine(targetFolder, "%(playlist_title,series,title).70s [%(playlist_id,id)s]", "%(playlist_index,autonumber)02d - %(title).70s [%(id)s].%(ext)s");
+                string plIdTemplate = ctx.IsMp3 ? "%(playlist_id,id)s_MP3" : "%(playlist_id,id)s";
+                options.Output = Path.Combine(targetFolder, $"%(playlist_title,series,title).70s [{plIdTemplate}]", "%(playlist_index,autonumber)02d - %(title).70s [%(id)s].%(ext)s");
             }
             else if (ctx.Url.Contains("tiktok.com"))
             {
@@ -212,8 +220,9 @@ namespace Koxmix.Downloaders
                     }
                 }
 
+                string plPrefixDone = ctx.IsMp3 ? "[Playlist MP3] " : "[Playlist] ";
                 ctx.OnStatusChanged?.Invoke("Completed");
-                ctx.OnSuccess?.Invoke("[Playlist] " + playlistName, sizeText, finalPlaylistOutput);
+                ctx.OnSuccess?.Invoke(plPrefixDone + playlistName, sizeText, finalPlaylistOutput);
                 return;
             }
 

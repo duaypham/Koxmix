@@ -11,18 +11,53 @@ namespace Koxmix.Core
         private readonly string _historyFile = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "history.txt");
         private static readonly object _fileLock = new object();
 
+        public static bool IsMp3HistoryEntry(string title, string targetPath)
+        {
+            if (!string.IsNullOrEmpty(targetPath))
+            {
+                if (targetPath.EndsWith(".mp3", StringComparison.OrdinalIgnoreCase) ||
+                    targetPath.EndsWith("_MP3].zip", StringComparison.OrdinalIgnoreCase))
+                {
+                    return true;
+                }
+            }
+            if (!string.IsNullOrEmpty(title) &&
+                (title.EndsWith(".mp3", StringComparison.OrdinalIgnoreCase) ||
+                 title.StartsWith("[Playlist MP3]", StringComparison.OrdinalIgnoreCase)))
+            {
+                return true;
+            }
+            return false;
+        }
+
         public void AddToHistory(string url, string title, string targetPath, string size)
         {
             try
             {
                 lock (_fileLock)
                 {
+                    bool newIsMp3 = IsMp3HistoryEntry(title, targetPath);
+
                     var existingLines = new List<string>();
                     if (File.Exists(_historyFile))
                     {
                         existingLines = File.ReadAllLines(_historyFile, Encoding.UTF8)
-                            .Where(l => !string.IsNullOrWhiteSpace(l) &&
-                                        !l.Split('|')[0].Equals(url ?? "", StringComparison.OrdinalIgnoreCase))
+                            .Where(l =>
+                            {
+                                if (string.IsNullOrWhiteSpace(l)) return false;
+                                var parts = l.Split('|');
+                                if (parts.Length < 4) return false;
+
+                                bool sameUrl = parts[0].Equals(url ?? "", StringComparison.OrdinalIgnoreCase);
+                                if (!sameUrl) return true; // Khác URL -> Giữ lại
+
+                                string oldTitle = parts[1];
+                                try { oldTitle = Encoding.UTF8.GetString(Convert.FromBase64String(parts[1])); } catch { }
+                                bool oldIsMp3 = IsMp3HistoryEntry(oldTitle, parts[2]);
+
+                                // Nếu cùng URL nhưng khác chế độ (1 cái MP4, 1 cái MP3) -> Giữ lại cả hai!
+                                return oldIsMp3 != newIsMp3;
+                            })
                             .ToList();
                     }
 
@@ -87,7 +122,7 @@ namespace Koxmix.Core
                             string itemUrl = item[0] ?? "";
                             string itemPath = item[2] ?? "";
 
-                            if (!removed && itemUrl == (targetUrl ?? ""))
+                            if (!removed && itemUrl.Equals(targetUrl ?? "", StringComparison.OrdinalIgnoreCase))
                             {
                                 bool isPathSame = true;
                                 if (!string.IsNullOrEmpty(targetPath) && !string.IsNullOrEmpty(itemPath))

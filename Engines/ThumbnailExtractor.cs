@@ -68,7 +68,7 @@ namespace Koxmix.Engines
                 var psi = new ProcessStartInfo
                 {
                     FileName = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "ffmpeg.exe"),
-                    Arguments = $"-i \"{audioPath}\" -an -vcodec copy -y \"{tempJpg}\"",
+                    Arguments = $"-i \"{audioPath}\" -an -vframes 1 -q:v 2 -y \"{tempJpg}\"",
                     CreateNoWindow = true,
                     UseShellExecute = false
                 };
@@ -94,9 +94,6 @@ namespace Koxmix.Engines
             return null;
         }
 
-        /// <summary>
-        /// Tạo sẵn file .thumb.jpg chuẩn trong thư mục trước khi đóng gói thành .zip (hỗ trợ cả WebP/AVIF và Video Playlist).
-        /// </summary>
         public static void PrepareFolderThumbnailBeforeZip(string folderPath)
         {
             try
@@ -110,7 +107,6 @@ namespace Koxmix.Engines
                 var nativeExts = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { ".jpg", ".jpeg", ".png", ".bmp" };
                 if (dir.GetFiles("*.*", SearchOption.TopDirectoryOnly).Any(f => nativeExts.Contains(f.Extension)))
                 {
-                    // Đã có sẵn ảnh chuẩn GDI+ đọc được trực tiếp trong zip, không cần tạo thêm .thumb.jpg
                     return;
                 }
 
@@ -146,9 +142,6 @@ namespace Koxmix.Engines
             catch { }
         }
 
-        /// <summary>
-        /// Đọc trực tiếp ảnh đầu tiên bên trong file .zip lên RAM mà không cần giải nén ra ổ cứng.
-        /// </summary>
         public static Bitmap ExtractThumbnailFromZip(string zipPath)
         {
             if (string.IsNullOrWhiteSpace(zipPath) || !File.Exists(zipPath)) return null;

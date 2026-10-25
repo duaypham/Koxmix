@@ -12,6 +12,7 @@ using Koxmix.Utils;
 
 namespace Koxmix.Controls
 {
+    [DesignerCategory("Code")]
     public class DownloadCardItem : UserControl
     {
         private PictureBox picThumbnail;
@@ -61,6 +62,10 @@ namespace Koxmix.Controls
         [Browsable(false)]
         [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
         public string Url { get; set; }
+
+        [Browsable(false)]
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+        public bool IsMp3 { get; set; }
 
         [Browsable(false)]
         [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]

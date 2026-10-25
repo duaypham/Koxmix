@@ -11,6 +11,7 @@ using Microsoft.Web.WebView2.WinForms;
 
 namespace Koxmix.Forms
 {
+    [System.ComponentModel.DesignerCategory("Code")]
     public class LoginBrowserForm : Form
     {
         private WebView2 _webView;

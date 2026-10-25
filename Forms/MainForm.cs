@@ -131,7 +131,6 @@ namespace Koxmix.Forms
         private void LoadHistoryData()
         {
             var historyData = _historyManager.LoadHistory();
-            // Chỉ nạp tối đa số lượng thẻ giới hạn gần nhất lên giao diện để tiết kiệm RAM lúc khởi động
             var recentHistory = historyData.Skip(Math.Max(0, historyData.Count - MaxDisplayedCards)).ToList();
 
             _pnlCards.SuspendLayout();
@@ -144,6 +143,7 @@ namespace Koxmix.Forms
                 {
                     Url = url,
                     TargetPath = targetPath,
+                    IsMp3 = HistoryManager.IsMp3HistoryEntry(title, targetPath),
                     Margin = new Padding(0, 0, 0, 4)
                 };
 
@@ -193,6 +193,23 @@ namespace Koxmix.Forms
         }
 
         private bool IsDownloadModeMp3() => radAudio != null && radAudio.Checked;
+        private bool GetEffectiveMp3Mode(string url)
+        {
+            if (!IsDownloadModeMp3() || string.IsNullOrEmpty(url)) return false;
+
+            if (url.Contains("pixiv.net") ||
+                url.Contains("nhentai.net") ||
+                url.Contains("hitomi.la") ||
+                url.Contains("x.com") ||
+                url.Contains("twitter.com") ||
+                url.Contains("reddit.com") ||
+                url.Contains("redd.it") ||
+                UrlUtils.IsFacebookAlbumOrPost(url))
+            {
+                return false;
+            }
+            return true;
+        }
 
         #region Khởi tạo & Cập nhật Thư viện lõi
 
@@ -264,12 +281,15 @@ namespace Koxmix.Forms
                 }
 
                 validLinks++;
-                string initialTargetFolder = PathManager.GetTargetPathForUrl(url, IsDownloadModeMp3());
+                bool wantMp3 = GetEffectiveMp3Mode(url);
+                string initialTargetFolder = PathManager.GetTargetPathForUrl(url, wantMp3);
 
                 DownloadCardItem existingCard = null;
                 foreach (Control c in _pnlCards.Controls)
                 {
-                    if (c is DownloadCardItem cardItem && string.Equals(cardItem.Url, url, StringComparison.OrdinalIgnoreCase))
+                    if (c is DownloadCardItem cardItem &&
+                        string.Equals(cardItem.Url, url, StringComparison.OrdinalIgnoreCase) &&
+                        cardItem.IsMp3 == wantMp3)
                     {
                         existingCard = cardItem;
                         break;
@@ -286,7 +306,7 @@ namespace Koxmix.Forms
                     }
 
                     existingCard.TargetPath = initialTargetFolder;
-                    StartDownloadForCard(existingCard, url);
+                    StartDownloadForCard(existingCard, url, forceRedownload: false);
                 }
                 else
                 {
@@ -294,6 +314,7 @@ namespace Koxmix.Forms
                     {
                         Url = url,
                         TargetPath = initialTargetFolder,
+                        IsMp3 = wantMp3,
                         Width = _pnlCards.ClientSize.Width,
                         Margin = new Padding(0, 0, 0, 4)
                     };
@@ -308,7 +329,7 @@ namespace Koxmix.Forms
                     _pnlCards.Controls.Add(card);
                     _pnlCards.Controls.SetChildIndex(card, insertOffset++);
 
-                    StartDownloadForCard(card, url);
+                    StartDownloadForCard(card, url, forceRedownload: false);
                 }
             }
 
@@ -331,7 +352,8 @@ namespace Koxmix.Forms
             var cts = new CancellationTokenSource();
             card.Tag = cts;
 
-            string categoryFolder = PathManager.GetTargetPathForUrl(url, IsDownloadModeMp3());
+            bool effectiveMp3 = card.IsMp3;
+            string categoryFolder = PathManager.GetTargetPathForUrl(url, effectiveMp3);
             card.TargetPath = categoryFolder;
 
             if (string.IsNullOrWhiteSpace(card.Title) || card.Title == "Untitled" || card.Title == "Fetching info...")
@@ -343,7 +365,7 @@ namespace Koxmix.Forms
             var ctx = new DownloadContext
             {
                 Url = url,
-                IsMp3 = IsDownloadModeMp3(),
+                IsMp3 = effectiveMp3,
                 ForceRedownload = forceRedownload,
                 TargetFolder = categoryFolder,
                 StartTime = DateTime.Now,
@@ -446,9 +468,6 @@ namespace Koxmix.Forms
                             {
                                 card.SetError("Cancelled");
                                 card.Tag = null;
-
-                                _historyManager.RemoveFromHistory(url, card.TargetPath);
-                                _historyManager.AddToHistory(url, card.Title, card.TargetPath, "Cancelled");
                             }
                         }));
                     }
