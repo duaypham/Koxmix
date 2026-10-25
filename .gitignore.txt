@@ -2,6 +2,7 @@ bin/
 obj/
 Downloads/
 BrowserData/
+Properties/PublishProfiles/
 *.exe
 *.zip
 app_cookies.txt
