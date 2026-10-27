@@ -17,6 +17,7 @@ namespace Koxmix.Downloaders
     {
         public bool CanHandle(string url) => !string.IsNullOrEmpty(url);
 
+        [Obsolete]
         public async Task DownloadAsync(DownloadContext ctx)
         {
             string targetFolder = ctx.TargetFolder;
@@ -34,28 +35,32 @@ namespace Koxmix.Downloaders
                 var existingZip = new DirectoryInfo(targetFolder).GetFiles($"*{plTag}*.zip").FirstOrDefault();
                 var existingDir = new DirectoryInfo(targetFolder).GetDirectories($"*{plTag}*").FirstOrDefault();
 
-                if (existingZip != null || (existingDir != null && existingDir.GetFiles().Length > 0))
+                if (existingZip != null)
                 {
                     if (ctx.ForceRedownload)
                     {
-                        if (existingZip != null) FormatUtils.TryDeleteFile(existingZip.FullName);
+                        FormatUtils.TryDeleteFile(existingZip.FullName);
                         if (existingDir != null) { try { existingDir.Delete(true); } catch { } }
                     }
                     else
                     {
                         ctx.OnStatusChanged?.Invoke("Completed (Exists)");
-                        if (existingZip != null)
-                        {
-                            string rawZipName = Path.GetFileNameWithoutExtension(existingZip.Name);
-                            int idx = rawZipName.LastIndexOf(" [");
-                            string cleanPlName = idx > 0 ? rawZipName.Substring(0, idx) : rawZipName;
-                            ctx.OnSuccess?.Invoke($"{plPrefix} {cleanPlName}", FormatUtils.FormatFileSize(existingZip.Length), existingZip.FullName);
-                        }
-                        else
-                        {
-                            ctx.OnSuccess?.Invoke($"{plPrefix} {existingDir.Name}", "Multiple files", existingDir.FullName);
-                        }
+                        string rawZipName = Path.GetFileNameWithoutExtension(existingZip.Name);
+                        int idx = rawZipName.LastIndexOf(" [");
+                        string cleanPlName = idx > 0 ? rawZipName.Substring(0, idx) : rawZipName;
+                        ctx.OnSuccess?.Invoke($"{plPrefix} {cleanPlName}", FormatUtils.FormatFileSize(existingZip.Length), existingZip.FullName);
                         return;
+                    }
+                }
+                else if (existingDir != null)
+                {
+                    foreach (var tempFile in existingDir.GetFiles("*.*", SearchOption.AllDirectories))
+                    {
+                        if (tempFile.Extension.Equals(".part", StringComparison.OrdinalIgnoreCase) ||
+                            tempFile.Extension.Equals(".ytdl", StringComparison.OrdinalIgnoreCase))
+                        {
+                            FormatUtils.TryDeleteFile(tempFile.FullName);
+                        }
                     }
                 }
             }
@@ -85,8 +90,8 @@ namespace Koxmix.Downloaders
 
             HashSet<string> snapshotBefore = GetDirectorySnapshot(targetFolder);
 
-            string ytdlpExe = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "yt-dlp.exe");
-            string ffmpegExe = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "ffmpeg.exe");
+            string ytdlpExe = Path.Combine(AppUtils.DataDir, "yt-dlp.exe");
+            string ffmpegExe = Path.Combine(AppUtils.DataDir, "ffmpeg.exe");
 
             var localYtdl = new YoutubeDL(4)
             {
@@ -112,7 +117,7 @@ namespace Koxmix.Downloaders
 
             options.AddCustomOption<bool>("--rm-cache-dir", true);
 
-            string cookieFile = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "app_cookies.txt");
+            string cookieFile = Path.Combine(AppUtils.DataDir, "app_cookies.txt");
             if (File.Exists(cookieFile))
             {
                 options.Cookies = cookieFile;
@@ -188,9 +193,21 @@ namespace Koxmix.Downloaders
                     throw new Exception(playlistRes?.ErrorOutput != null ? string.Join("\n", playlistRes.ErrorOutput) : "Failed to download playlist.");
                 }
 
-                string playlistFolder = (playlistRes.Data != null && playlistRes.Data.Length != 0 && !string.IsNullOrEmpty(playlistRes.Data[0]))
-                    ? Path.GetDirectoryName(playlistRes.Data[0])
-                    : targetFolder;
+                string firstValidFile = playlistRes.Data?.FirstOrDefault(d => !string.IsNullOrEmpty(d) && File.Exists(d));
+                string playlistFolder = !string.IsNullOrEmpty(firstValidFile) ? Path.GetDirectoryName(firstValidFile) : null;
+
+                if (string.IsNullOrEmpty(playlistFolder) && !string.IsNullOrEmpty(playlistId))
+                {
+                    string plTag = ctx.IsMp3 ? $"[{playlistId}_MP3]" : $"[{playlistId}]";
+                    var matchedDir = new DirectoryInfo(targetFolder).GetDirectories($"*{plTag}*").FirstOrDefault();
+                    if (matchedDir != null) playlistFolder = matchedDir.FullName;
+                }
+
+                if (string.IsNullOrEmpty(playlistFolder) || !Directory.Exists(playlistFolder) ||
+                    Directory.GetFiles(playlistFolder, "*.*", SearchOption.TopDirectoryOnly).Length == 0)
+                {
+                    throw new Exception("Không tải được video/nhạc nào từ Playlist này (Playlist có thể bị ẩn hoặc cần cập nhật Cookie).");
+                }
 
                 string rawFolderName = new DirectoryInfo(playlistFolder).Name;
                 int lastBracketIndex = rawFolderName.LastIndexOf(" [");

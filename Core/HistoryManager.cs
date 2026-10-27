@@ -1,4 +1,5 @@
-﻿using System;
+﻿using Koxmix.Utils;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -8,7 +9,7 @@ namespace Koxmix.Core
 {
     public class HistoryManager
     {
-        private readonly string _historyFile = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "history.txt");
+        private readonly string _historyFile = Path.Combine(AppUtils.DataDir, "history.txt");
         private static readonly object _fileLock = new object();
 
         public static bool IsMp3HistoryEntry(string title, string targetPath)

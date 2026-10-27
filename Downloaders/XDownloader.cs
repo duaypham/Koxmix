@@ -77,7 +77,7 @@ namespace Koxmix.Downloaders
                     {
                         await _cliRunner.DownloadMediaViaYtDlpCliAsync(ctx.Url, tempFolder, extractMp3: true, ctx.Token, progress);
                     }
-                    catch (Exception ex)
+                    catch (Exception ex) when (!ctx.Token.IsCancellationRequested)
                     {
                         if (!ex.Message.Contains("unable to obtain file audio codec") &&
                             !ex.Message.Contains("Audio extraction failed") &&
@@ -105,7 +105,7 @@ namespace Koxmix.Downloaders
                     {
                         await _cliRunner.DownloadGalleryAsync(ctx.Url, tempFolder, ctx.Token);
                     }
-                    catch
+                    catch when (!ctx.Token.IsCancellationRequested)
                     {
                         ctx.OnStatusChanged?.Invoke("Switching to Video/Gif Engine...");
                         try
@@ -113,7 +113,7 @@ namespace Koxmix.Downloaders
                             await _cliRunner.DownloadMediaViaYtDlpCliAsync(ctx.Url, tempFolder, extractMp3: false, ctx.Token, progress);
                             finalStatus = fallbackToMedia ? "Completed (Missing Images)" : "Completed";
                         }
-                        catch (Exception ex3)
+                        catch (Exception ex3) when (!ctx.Token.IsCancellationRequested)
                         {
                             throw new Exception("X.com đã chặn kết nối. Vui lòng bấm nút 'Cookies', đăng nhập vào X.com và lưu lại để phần mềm lấy giấy thông hành.\nChi tiết lỗi: " + ex3.Message);
                         }

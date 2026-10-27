@@ -37,7 +37,7 @@ namespace Koxmix.Downloaders
 
                     _client = new HttpClient(_handler) { Timeout = TimeSpan.FromMinutes(2) };
 
-                    string uaPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "app_useragent.txt");
+                    string uaPath = Path.Combine(AppUtils.DataDir, "app_useragent.txt");
                     string realUa = File.Exists(uaPath)
                         ? File.ReadAllText(uaPath).Trim()
                         : "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36";
@@ -54,6 +54,7 @@ namespace Koxmix.Downloaders
 
         public async Task DownloadAsync(DownloadContext ctx)
         {
+            LoadCookiesFromFile();
             string targetFolder = ctx.TargetFolder;
             Directory.CreateDirectory(targetFolder);
 
@@ -61,13 +62,12 @@ namespace Koxmix.Downloaders
             if (string.IsNullOrEmpty(pixivId))
                 throw new ArgumentException("Không tìm thấy ID Pixiv trong URL.");
 
-            // Quét kiểm tra cả File (.zip hoặc ảnh đơn) và Thư mục
             var existingDirs = new DirectoryInfo(targetFolder).GetDirectories($"*({pixivId})*", SearchOption.TopDirectoryOnly).ToList();
             var existingFiles = new DirectoryInfo(targetFolder).GetFiles($"*{pixivId}*.*", SearchOption.TopDirectoryOnly)
                 .Where(f => !f.Name.EndsWith(".part", StringComparison.OrdinalIgnoreCase))
                 .ToList();
 
-            if ((existingDirs.Count > 0 && existingDirs[0].GetFiles().Length > 0) || existingFiles.Count > 0)
+            if (existingFiles.Count > 0)
             {
                 if (ctx.ForceRedownload)
                 {
@@ -77,17 +77,9 @@ namespace Koxmix.Downloaders
                 else
                 {
                     ctx.OnStatusChanged?.Invoke("Completed (Exists)");
-                    if (existingFiles.Count > 0)
-                    {
-                        var latest = existingFiles.OrderByDescending(f => f.LastWriteTime).First();
-                        string cleanTitle = ExtractCleanPixivTitle(latest.Name, pixivId);
-                        ctx.OnSuccess?.Invoke(cleanTitle, FormatUtils.FormatFileSize(latest.Length), latest.FullName);
-                    }
-                    else
-                    {
-                        string cleanTitle = ExtractCleanPixivTitle(existingDirs[0].Name, pixivId);
-                        ctx.OnSuccess?.Invoke(cleanTitle, $"{existingDirs[0].GetFiles().Length} Files", existingDirs[0].FullName);
-                    }
+                    var latest = existingFiles.OrderByDescending(f => f.LastWriteTime).First();
+                    string cleanTitle = ExtractCleanPixivTitle(latest.Name, pixivId);
+                    ctx.OnSuccess?.Invoke(cleanTitle, FormatUtils.FormatFileSize(latest.Length), latest.FullName);
                     return;
                 }
             }
@@ -166,10 +158,10 @@ namespace Koxmix.Downloaders
                         try
                         {
                             ctx.Token.ThrowIfCancellationRequested();
-                            await Task.Delay(Random.Shared.Next(80, 200), ctx.Token);
 
                             if (!File.Exists(filePath) || new FileInfo(filePath).Length == 0)
                             {
+                                await Task.Delay(Random.Shared.Next(80, 200), ctx.Token);
                                 using var imgResponse = await _client.GetAsync(imgUrl, HttpCompletionOption.ResponseHeadersRead, ctx.Token);
                                 imgResponse.EnsureSuccessStatusCode();
                                 using (var fs = new FileStream(tempFilePath, FileMode.Create, FileAccess.Write, FileShare.None, 8192, true))
@@ -209,9 +201,20 @@ namespace Koxmix.Downloaders
             string finalOutput = isMultiple ? finalPath : sampleFilePath;
             if (isMultiple)
             {
+                var downloadedFiles = Directory.GetFiles(finalPath, "*.*", SearchOption.TopDirectoryOnly)
+                    .Where(f => !f.EndsWith(".part", StringComparison.OrdinalIgnoreCase)).ToArray();
+                if (downloadedFiles.Length < totalImages)
+                {
+                    throw new HttpRequestException($"Tải thiếu ảnh Pixiv ({downloadedFiles.Length}/{totalImages}) do lỗi kết nối, đang thử tải bù...");
+                }
+
                 ctx.OnStatusChanged?.Invoke("Packaging album into .zip...");
                 finalOutput = await Task.Run(() => FormatUtils.PackFolderToZip(finalPath, deleteSourceFolder: true), ctx.Token);
                 if (File.Exists(finalOutput)) totalBytes = new FileInfo(finalOutput).Length;
+            }
+            else if (string.IsNullOrEmpty(sampleFilePath) || !File.Exists(sampleFilePath))
+            {
+                throw new HttpRequestException("Tải ảnh đơn Pixiv thất bại do lỗi kết nối.");
             }
 
             string displayTitle = isMultiple ? $"[Pixiv] {safeTitle} - {safeAuthor}" : safeTitle;
@@ -222,7 +225,6 @@ namespace Koxmix.Downloaders
         private static string ExtractCleanPixivTitle(string rawFileOrDirName, string pixivId)
         {
             string nameNoExt = Path.GetFileNameWithoutExtension(rawFileOrDirName);
-            // Nếu là Album: "[Pixiv] Title - Author (123456)" -> Bỏ " (123456)"
             string idSuffix = $" ({pixivId})";
             if (nameNoExt.EndsWith(idSuffix, StringComparison.OrdinalIgnoreCase))
             {
@@ -244,7 +246,21 @@ namespace Koxmix.Downloaders
         {
             try
             {
-                string cookiePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "app_cookies.txt");
+                string uaPath = Path.Combine(AppUtils.DataDir, "app_useragent.txt");
+                if (File.Exists(uaPath) && _client != null)
+                {
+                    string realUa = File.ReadAllText(uaPath).Trim();
+                    if (!string.IsNullOrEmpty(realUa))
+                    {
+                        lock (_initLock)
+                        {
+                            _client.DefaultRequestHeaders.Remove("User-Agent");
+                            _client.DefaultRequestHeaders.TryAddWithoutValidation("User-Agent", realUa);
+                        }
+                    }
+                }
+
+                string cookiePath = Path.Combine(AppUtils.DataDir, "app_cookies.txt");
                 if (!File.Exists(cookiePath)) return;
 
                 foreach (string line in File.ReadAllLines(cookiePath))

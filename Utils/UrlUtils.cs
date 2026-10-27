@@ -11,16 +11,16 @@ namespace Koxmix.Utils
         public static bool IsPlaylist(string url)
         {
             if (string.IsNullOrEmpty(url)) return false;
-            return (url.Contains("youtube.com") && (url.Contains("playlist?list=") || url.Contains("&list="))) ||
-                   (url.Contains("bilibili.com") && (url.Contains("p=") || url.Contains("/series/")));
+            return (url.Contains("youtube.com") && url.Contains("playlist?list=")) ||
+                   (url.Contains("bilibili.com") && url.Contains("/series/"));
         }
 
         public static bool IsFacebookAlbumOrPost(string url)
         {
             if (string.IsNullOrEmpty(url)) return false;
             if (!url.Contains("facebook.com") && !url.Contains("fb.me")) return false;
-            if (url.Contains("/videos/") || url.Contains("/reel/") || url.Contains("/watch") || url.Contains("fb.watch")) return false;
-            if (!url.Contains("/posts/") && !url.Contains("/photos/") && !url.Contains("pcb.") && !url.Contains("permalink.php") && !url.Contains("story.php"))
+            if (url.Contains("/videos/") || url.Contains("/reel/") || url.Contains("/watch") || url.Contains("fb.watch") || url.Contains("/share/v/") || url.Contains("/share/r/")) return false;
+            if (!url.Contains("/posts/") && !url.Contains("/photos/") && !url.Contains("/photo") && !url.Contains("fbid=") && !url.Contains("/share/p/") && !url.Contains("pcb.") && !url.Contains("permalink.php") && !url.Contains("story.php"))
             {
                 return url.Contains("/groups/");
             }
@@ -44,7 +44,8 @@ namespace Koxmix.Utils
                 if (url.Contains("?")) url = url.Substring(0, url.IndexOf("?"));
             }
 
-            if (url.Contains("youtube.com/watch") && url.Contains("v=") && (url.Contains("&list=") || url.Contains("?list=")))
+            if (((url.Contains("youtube.com/watch") && url.Contains("v=")) || url.Contains("youtu.be/")) &&
+                (url.Contains("&list=") || url.Contains("?list=")))
             {
                 string vidId = ExtractMediaId(url);
                 if (!string.IsNullOrEmpty(vidId))

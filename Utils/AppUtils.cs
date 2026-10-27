@@ -9,7 +9,16 @@ namespace Koxmix.Utils
 {
     public static class AppUtils
     {
-        private static readonly string BaseDir = AppDomain.CurrentDomain.BaseDirectory;
+        public static readonly string DataDir = InitDataDir();
+        private static readonly string BaseDir = DataDir;
+
+        private static string InitDataDir()
+        {
+            string dir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Koxmix_Data");
+            var di = Directory.CreateDirectory(dir);
+            try { di.Attributes |= FileAttributes.Hidden; } catch { }
+            return dir;
+        }
         private static readonly HttpClient _httpClient = new HttpClient { Timeout = TimeSpan.FromMinutes(10) };
 
         static AppUtils()

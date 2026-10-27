@@ -6,6 +6,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using System.Windows.Forms;
+using Koxmix.Utils;
 using Microsoft.Web.WebView2.Core;
 using Microsoft.Web.WebView2.WinForms;
 
@@ -122,12 +123,12 @@ namespace Koxmix.Forms
         {
             try
             {
-                string userDataFolder = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "BrowserData");
+                string userDataFolder = Path.Combine(AppUtils.DataDir, "BrowserData");
                 var env = await CoreWebView2Environment.CreateAsync(null, userDataFolder);
                 await _webView.EnsureCoreWebView2Async(env);
 
                 string realUa = _webView.CoreWebView2.Settings.UserAgent;
-                File.WriteAllText(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "app_useragent.txt"), realUa);
+                File.WriteAllText(Path.Combine(AppUtils.DataDir, "app_useragent.txt"), realUa);
 
                 _webView.NavigationStarting += (s, e) => { _lblStatus.Text = "Loading page..."; };
                 _webView.NavigationCompleted += (s, e) => { _lblStatus.Text = "Ready!"; };
@@ -214,7 +215,7 @@ namespace Koxmix.Forms
                     }
                 }
 
-                string cookiePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "app_cookies.txt");
+                string cookiePath = Path.Combine(AppUtils.DataDir, "app_cookies.txt");
                 File.WriteAllText(cookiePath, sb.ToString(), new UTF8Encoding(false));
 
                 string msg = "Successfully saved clean Cookies!";

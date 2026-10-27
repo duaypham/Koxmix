@@ -28,20 +28,21 @@ namespace Koxmix.Downloaders
             var existingZips = new DirectoryInfo(targetFolder).GetFiles($"*[Hitomi_{extractId}]*.zip").ToList();
             var existingDirs = new DirectoryInfo(targetFolder).GetDirectories($"*[Hitomi_{extractId}]*").ToList();
 
-            if (existingZips.Count > 0 || (existingDirs.Count > 0 && existingDirs[0].GetFiles().Length > 0))
+            if (existingDirs.Count > 0)
+            {
+                foreach (var d in existingDirs) { try { d.Delete(true); } catch { } }
+            }
+
+            if (existingZips.Count > 0)
             {
                 if (ctx.ForceRedownload)
                 {
                     foreach (var z in existingZips) FormatUtils.TryDeleteFile(z.FullName);
-                    if (existingDirs.Count > 0) { try { existingDirs[0].Delete(true); } catch { } }
                 }
                 else
                 {
                     ctx.OnStatusChanged?.Invoke("Completed (Exists)");
-                    if (existingZips.Count > 0)
-                        ctx.OnSuccess?.Invoke(Path.GetFileNameWithoutExtension(existingZips[0].Name), FormatUtils.FormatFileSize(existingZips[0].Length), existingZips[0].FullName);
-                    else
-                        ctx.OnSuccess?.Invoke(existingDirs[0].Name, $"{existingDirs[0].GetFiles().Length} Files", existingDirs[0].FullName);
+                    ctx.OnSuccess?.Invoke(Path.GetFileNameWithoutExtension(existingZips[0].Name), FormatUtils.FormatFileSize(existingZips[0].Length), existingZips[0].FullName);
                     return;
                 }
             }
@@ -97,7 +98,7 @@ namespace Koxmix.Downloaders
             {
                 await _cliRunner.DownloadGalleryAsync(ctx.Url, finalPath, ctx.Token, useCookies: true);
             }
-            catch
+            catch when (!ctx.Token.IsCancellationRequested)
             {
                 ctx.OnStatusChanged?.Invoke("Trying guest mode...");
                 await _cliRunner.DownloadGalleryAsync(ctx.Url, finalPath, ctx.Token, useCookies: false);
@@ -107,7 +108,11 @@ namespace Koxmix.Downloaders
                 isDownloading = false;
             }
 
-            ctx.Token.ThrowIfCancellationRequested();
+            if (ctx.Token.IsCancellationRequested)
+            {
+                try { if (Directory.Exists(finalPath)) Directory.Delete(finalPath, true); } catch { }
+                ctx.Token.ThrowIfCancellationRequested();
+            }
 
             var downloadedFiles = new DirectoryInfo(finalPath).GetFiles("*.*", SearchOption.TopDirectoryOnly);
             if (downloadedFiles.Length == 0)

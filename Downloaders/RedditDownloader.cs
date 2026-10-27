@@ -73,7 +73,7 @@ namespace Koxmix.Downloaders
                     {
                         await _cliRunner.DownloadMediaViaYtDlpCliAsync(ctx.Url, tempFolder, extractMp3: true, ctx.Token, progress);
                     }
-                    catch
+                    catch when (!ctx.Token.IsCancellationRequested)
                     {
                         fallbackToMedia = true;
                         try
@@ -91,7 +91,7 @@ namespace Koxmix.Downloaders
                     {
                         await _cliRunner.DownloadGalleryAsync(ctx.Url, tempFolder, ctx.Token);
                     }
-                    catch
+                    catch when (!ctx.Token.IsCancellationRequested)
                     {
                         ctx.OnStatusChanged?.Invoke("Switching to Video Engine...");
                         await _cliRunner.DownloadMediaViaYtDlpCliAsync(ctx.Url, tempFolder, extractMp3: false, ctx.Token, progress);

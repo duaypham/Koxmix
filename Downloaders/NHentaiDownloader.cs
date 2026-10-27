@@ -37,7 +37,7 @@ namespace Koxmix.Downloaders
 
                     _client = new HttpClient(_handler) { Timeout = TimeSpan.FromMinutes(2) };
 
-                    string uaPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "app_useragent.txt");
+                    string uaPath = Path.Combine(AppUtils.DataDir, "app_useragent.txt");
                     string realUa = File.Exists(uaPath)
                         ? File.ReadAllText(uaPath).Trim()
                         : "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36";
@@ -53,6 +53,7 @@ namespace Koxmix.Downloaders
 
         public async Task DownloadAsync(DownloadContext ctx)
         {
+            LoadCookiesFromFile();
             string targetFolder = ctx.TargetFolder;
             Directory.CreateDirectory(targetFolder);
 
@@ -62,7 +63,7 @@ namespace Koxmix.Downloaders
 
             var existingZips = new DirectoryInfo(targetFolder).GetFiles($"*[nHentai_{galleryId}]*.zip").ToList();
             var existingDirs = new DirectoryInfo(targetFolder).GetDirectories($"*[nHentai_{galleryId}]*").ToList();
-            if (existingZips.Count > 0 || (existingDirs.Count > 0 && existingDirs[0].GetFiles().Length > 0))
+            if (existingZips.Count > 0)
             {
                 if (ctx.ForceRedownload)
                 {
@@ -72,16 +73,8 @@ namespace Koxmix.Downloaders
                 else
                 {
                     ctx.OnStatusChanged?.Invoke("Completed (Exists)");
-                    if (existingZips.Count > 0)
-                    {
-                        string cleanName = Regex.Replace(Path.GetFileNameWithoutExtension(existingZips[0].Name), @"^\[nHentai_\d+\]\s*", "[nHentai] ");
-                        ctx.OnSuccess?.Invoke(cleanName, FormatUtils.FormatFileSize(existingZips[0].Length), existingZips[0].FullName);
-                    }
-                    else
-                    {
-                        string cleanName = Regex.Replace(existingDirs[0].Name, @"^\[nHentai_\d+\]\s*", "[nHentai] ");
-                        ctx.OnSuccess?.Invoke(cleanName, $"{existingDirs[0].GetFiles().Length} Files", existingDirs[0].FullName);
-                    }
+                    string cleanName = Regex.Replace(Path.GetFileNameWithoutExtension(existingZips[0].Name), @"^\[nHentai_\d+\]\s*", "[nHentai] ");
+                    ctx.OnSuccess?.Invoke(cleanName, FormatUtils.FormatFileSize(existingZips[0].Length), existingZips[0].FullName);
                     return;
                 }
             }
@@ -143,10 +136,10 @@ namespace Koxmix.Downloaders
                         try
                         {
                             ctx.Token.ThrowIfCancellationRequested();
-                            await Task.Delay(Random.Shared.Next(80, 200), ctx.Token);
 
                             if (!File.Exists(filePath) || new FileInfo(filePath).Length == 0)
                             {
+                                await Task.Delay(Random.Shared.Next(80, 200), ctx.Token);
                                 using var imgResponse = await _client.GetAsync(imgUrl, HttpCompletionOption.ResponseHeadersRead, ctx.Token);
                                 imgResponse.EnsureSuccessStatusCode();
                                 using (var fs = new FileStream(tempFilePath, FileMode.Create, FileAccess.Write, FileShare.None, 8192, true))
@@ -183,6 +176,14 @@ namespace Koxmix.Downloaders
                 }
             }
 
+            var downloadedFiles = Directory.GetFiles(finalPath, "*.*", SearchOption.TopDirectoryOnly)
+                .Where(f => !f.EndsWith(".part", StringComparison.OrdinalIgnoreCase)).ToArray();
+
+            if (downloadedFiles.Length < totalImages)
+            {
+                throw new HttpRequestException($"Tải thiếu trang ({downloadedFiles.Length}/{totalImages}) do lỗi kết nối mạng, đang thử tải bù...");
+            }
+
             ctx.OnStatusChanged?.Invoke("Packaging manga into .zip...");
             string zipPath = await Task.Run(() => FormatUtils.PackFolderToZip(finalPath, deleteSourceFolder: true), ctx.Token);
             if (File.Exists(zipPath)) totalBytes = new FileInfo(zipPath).Length;
@@ -195,7 +196,21 @@ namespace Koxmix.Downloaders
         {
             try
             {
-                string cookiePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "app_cookies.txt");
+                string uaPath = Path.Combine(AppUtils.DataDir, "app_useragent.txt");
+                if (File.Exists(uaPath) && _client != null)
+                {
+                    string realUa = File.ReadAllText(uaPath).Trim();
+                    if (!string.IsNullOrEmpty(realUa))
+                    {
+                        lock (_initLock)
+                        {
+                            _client.DefaultRequestHeaders.Remove("User-Agent");
+                            _client.DefaultRequestHeaders.TryAddWithoutValidation("User-Agent", realUa);
+                        }
+                    }
+                }
+
+                string cookiePath = Path.Combine(AppUtils.DataDir, "app_cookies.txt");
                 if (!File.Exists(cookiePath)) return;
 
                 foreach (string line in File.ReadAllLines(cookiePath))

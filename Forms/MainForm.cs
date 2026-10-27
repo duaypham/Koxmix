@@ -14,7 +14,6 @@ using Koxmix.Core;
 using Koxmix.Engines;
 using Koxmix.Models;
 using Koxmix.Utils;
-using YoutubeDLSharp;
 
 namespace Koxmix.Forms
 {
@@ -28,7 +27,6 @@ namespace Koxmix.Forms
 
         private FlowLayoutPanel _pnlCards;
         private DownloadCardItem _selectedCard;
-        private YoutubeDL _ytdl;
         private bool _isProcessingLinks = false;
 
         private ContextMenuStrip _contextMenu;
@@ -131,7 +129,7 @@ namespace Koxmix.Forms
         private void LoadHistoryData()
         {
             var historyData = _historyManager.LoadHistory();
-            var recentHistory = historyData.Skip(Math.Max(0, historyData.Count - MaxDisplayedCards)).ToList();
+            var recentHistory = historyData.Skip(Math.Max(0, historyData.Count - MaxDisplayedCards)).Reverse().ToList();
 
             _pnlCards.SuspendLayout();
             foreach (var data in recentHistory)
@@ -174,7 +172,6 @@ namespace Koxmix.Forms
                         this.BeginInvoke(new Action(() =>
                         {
                             if (card.IsDisposed) return;
-                            card.TargetPath = dPath;
                             _ = card.FetchThumbnailAsync(url, dPath);
                         }));
                     });
@@ -225,13 +222,6 @@ namespace Koxmix.Forms
                     this.BeginInvoke(new Action(() => lblStatus.Text = status));
                 }
             });
-
-            _ytdl = new YoutubeDL
-            {
-                YoutubeDLPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "yt-dlp.exe"),
-                FFmpegPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "ffmpeg.exe"),
-                OutputFolder = PathManager.GetTargetPathForUrl("youtube.com", false)
-            };
 
             lblStatus.Text = "Ready to download.";
             btnDownload.Enabled = true;
@@ -285,14 +275,30 @@ namespace Koxmix.Forms
                 string initialTargetFolder = PathManager.GetTargetPathForUrl(url, wantMp3);
 
                 DownloadCardItem existingCard = null;
+                bool isIncomingPlaylist = UrlUtils.IsPlaylist(url);
+                string incomingMediaId = isIncomingPlaylist ? UrlUtils.ExtractPlaylistId(url) : UrlUtils.ExtractMediaId(url);
+
                 foreach (Control c in _pnlCards.Controls)
                 {
-                    if (c is DownloadCardItem cardItem &&
-                        string.Equals(cardItem.Url, url, StringComparison.OrdinalIgnoreCase) &&
-                        cardItem.IsMp3 == wantMp3)
+                    if (c is DownloadCardItem cardItem && cardItem.IsMp3 == wantMp3)
                     {
-                        existingCard = cardItem;
-                        break;
+                        if (string.Equals(cardItem.Url, url, StringComparison.OrdinalIgnoreCase))
+                        {
+                            existingCard = cardItem;
+                            break;
+                        }
+
+                        if (!string.IsNullOrEmpty(incomingMediaId) &&
+                            UrlUtils.IsPlaylist(cardItem.Url) == isIncomingPlaylist &&
+                            string.Equals(PathManager.GetTargetPathForUrl(cardItem.Url, cardItem.IsMp3), initialTargetFolder, StringComparison.OrdinalIgnoreCase))
+                        {
+                            string cardMediaId = isIncomingPlaylist ? UrlUtils.ExtractPlaylistId(cardItem.Url) : UrlUtils.ExtractMediaId(cardItem.Url);
+                            if (string.Equals(incomingMediaId, cardMediaId, StringComparison.OrdinalIgnoreCase))
+                            {
+                                existingCard = cardItem;
+                                break;
+                            }
+                        }
                     }
                 }
 
@@ -362,7 +368,8 @@ namespace Koxmix.Forms
             }
             card.SetStatusText("Waiting in queue...");
 
-            var ctx = new DownloadContext
+            DownloadContext ctx = null;
+            ctx = new DownloadContext
             {
                 Url = url,
                 IsMp3 = effectiveMp3,
@@ -402,6 +409,8 @@ namespace Koxmix.Forms
                         this.BeginInvoke(new Action(() =>
                         {
                             if (card.IsDisposed) return;
+                            url = ctx.Url;
+                            card.Url = ctx.Url;
                             card.SetTitle(name);
                             card.SetSuccess(size);
 
@@ -418,7 +427,6 @@ namespace Koxmix.Forms
                                     this.BeginInvoke(new Action(() =>
                                     {
                                         if (card.IsDisposed) return;
-                                        card.TargetPath = dPath;
                                         _ = card.FetchThumbnailAsync(url, dPath);
                                         _historyManager.AddToHistory(url, name, path, size);
                                     }));
@@ -441,6 +449,7 @@ namespace Koxmix.Forms
                         {
                             if (card.IsDisposed) return;
                             card.SetError("Download failed");
+                            card.Tag = null;
                             MessageBox.Show(ex.ToString(), "Error Details", MessageBoxButtons.OK, MessageBoxIcon.Error);
                         }));
                     }
@@ -535,7 +544,7 @@ namespace Koxmix.Forms
                     {
                         try
                         {
-                            if (p.MainModule != null && p.MainModule.FileName.Contains(AppDomain.CurrentDomain.BaseDirectory))
+                            if (p.MainModule != null && p.MainModule.FileName.Contains(AppUtils.DataDir))
                             {
                                 p.Kill();
                             }
@@ -778,7 +787,9 @@ namespace Koxmix.Forms
                         foreach (var pf in files)
                         {
                             string ext = Path.GetExtension(pf).ToLowerInvariant();
-                            bool isMedia = ext == ".mp4" || ext == ".webm" || ext == ".mkv" || ext == ".mp3" || ext == ".m4a" || ext == ".srt" || ext == ".vtt";
+                            bool isMedia = _selectedCard.IsMp3
+                                ? (ext == ".mp3" || ext == ".m4a")
+                                : (ext == ".mp4" || ext == ".webm" || ext == ".mkv" || ext == ".srt" || ext == ".vtt");
                             bool isTemp = ext == ".part" || ext == ".ytdl" || ext == ".temp" || ext == ".tmp" || ext == ".crdownload";
                             bool isFrag = Regex.IsMatch(pf, @"\.f\d+\.") || pf.Contains("-Frag");
 

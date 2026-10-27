@@ -1,20 +1,21 @@
-﻿using System;
+﻿using Koxmix.Core;
+using Koxmix.Models;
+using Koxmix.Utils;
+using System;
 using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
-using Koxmix.Core;
-using Koxmix.Models;
 
 namespace Koxmix.Engines
 {
     public class CliRunner
     {
-        private readonly string _galleryDlPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "gallery-dl.exe");
-        private readonly string _ytDlpPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "yt-dlp.exe");
-        private readonly string _ffmpegPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "ffmpeg.exe");
+        private readonly string _galleryDlPath = Path.Combine(AppUtils.DataDir, "gallery-dl.exe");
+        private readonly string _ytDlpPath = Path.Combine(AppUtils.DataDir, "yt-dlp.exe");
+        private readonly string _ffmpegPath = Path.Combine(AppUtils.DataDir, "ffmpeg.exe");
 
         public event Action<string> OnProgressChanged;
 
@@ -34,7 +35,7 @@ namespace Koxmix.Engines
             string cookieArg = "";
             if (useCookies)
             {
-                string cookieFile = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "app_cookies.txt");
+                string cookieFile = Path.Combine(AppUtils.DataDir, "app_cookies.txt");
                 if (File.Exists(cookieFile))
                 {
                     string safeCookiePath = cookieFile.Replace("\\", "/");
@@ -47,7 +48,7 @@ namespace Koxmix.Engines
                 }
             }
 
-            string uaPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "app_useragent.txt");
+            string uaPath = Path.Combine(AppUtils.DataDir, "app_useragent.txt");
             string realUa = File.Exists(uaPath)
                 ? File.ReadAllText(uaPath).Trim()
                 : "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36";
@@ -82,7 +83,7 @@ namespace Koxmix.Engines
 
             Directory.CreateDirectory(outputFolder);
 
-            string cookieFile = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "app_cookies.txt");
+            string cookieFile = Path.Combine(AppUtils.DataDir, "app_cookies.txt");
             string cookieArg = File.Exists(cookieFile)
                 ? $"--cookies {QuoteArgument(cookieFile)} "
                 : $"--cookies-from-browser {PathManager.GetSelectedBrowser()} ";
@@ -166,7 +167,7 @@ namespace Koxmix.Engines
                 {
                     FileName = exePath,
                     Arguments = arguments,
-                    WorkingDirectory = AppDomain.CurrentDomain.BaseDirectory,
+                    WorkingDirectory = AppUtils.DataDir,
                     UseShellExecute = false,
                     CreateNoWindow = true,
                     RedirectStandardOutput = true,

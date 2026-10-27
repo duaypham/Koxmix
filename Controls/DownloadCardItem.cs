@@ -211,26 +211,22 @@ namespace Koxmix.Controls
                         if (ext == ".zip")
                         {
                             var bmp = ThumbnailExtractor.ExtractThumbnailFromZip(localPath);
-                            if (bmp != null) SetThumbnail(bmp);
-                            return;
+                            if (bmp != null) { SetThumbnail(bmp); return; }
                         }
-                        if (ext == ".jpg" || ext == ".png" || ext == ".jpeg" || ext == ".webp" || ext == ".bmp")
+                        else if (ext == ".jpg" || ext == ".png" || ext == ".jpeg" || ext == ".bmp")
                         {
                             var bmp = ThumbnailExtractor.LoadBitmapSafely(localPath);
-                            if (bmp != null) SetThumbnail(bmp);
-                            return;
+                            if (bmp != null) { SetThumbnail(bmp); return; }
                         }
-                        if (ext == ".mp4" || ext == ".webm" || ext == ".mkv" || ext == ".avi" || ext == ".flv" || ext == ".mov")
+                        else if (ext == ".webp" || ext == ".avif" || ext == ".gif" || ext == ".mp4" || ext == ".webm" || ext == ".mkv" || ext == ".avi" || ext == ".flv" || ext == ".mov")
                         {
                             var bmp = ThumbnailExtractor.ExtractVideoFrame(localPath);
-                            if (bmp != null) SetThumbnail(bmp);
-                            return;
+                            if (bmp != null) { SetThumbnail(bmp); return; }
                         }
-                        if (ext == ".mp3" || ext == ".m4a" || ext == ".flac")
+                        else if (ext == ".mp3" || ext == ".m4a" || ext == ".flac")
                         {
                             var bmp = ThumbnailExtractor.ExtractAudioCover(localPath);
-                            if (bmp != null) SetThumbnail(bmp);
-                            return;
+                            if (bmp != null) { SetThumbnail(bmp); return; }
                         }
                     }
 
@@ -238,7 +234,7 @@ namespace Koxmix.Controls
                     {
                         var dir = new DirectoryInfo(localPath);
 
-                        var imgExts = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { ".jpg", ".png", ".jpeg", ".webp", ".bmp" };
+                        var imgExts = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { ".jpg", ".png", ".jpeg", ".bmp" };
                         var firstImg = dir.GetFiles("*.*", SearchOption.AllDirectories).FirstOrDefault(f => imgExts.Contains(f.Extension));
                         if (firstImg != null)
                         {
@@ -247,7 +243,7 @@ namespace Koxmix.Controls
                             return;
                         }
 
-                        var vidExts = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { ".mp4", ".webm", ".mkv", ".avi", ".flv", ".mov" };
+                        var vidExts = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { ".webp", ".avif", ".gif", ".mp4", ".webm", ".mkv", ".avi", ".flv", ".mov" };
                         var firstVid = dir.GetFiles("*.*", SearchOption.AllDirectories).FirstOrDefault(f => vidExts.Contains(f.Extension));
                         if (firstVid != null)
                         {
@@ -317,7 +313,7 @@ namespace Koxmix.Controls
             if (!string.IsNullOrEmpty(url))
             {
                 if (url.Contains("youtube.com") || url.Contains("youtu.be")) prefix = "youtube";
-                else if (url.Contains("facebook.com") || url.Contains("fb.me")) prefix = "facebook";
+                else if (url.Contains("facebook.com") || url.Contains("fb.me") || url.Contains("fb.watch")) prefix = "facebook";
                 else if (url.Contains("x.com") || url.Contains("twitter.com")) prefix = "x";
                 else if (url.Contains("pixiv.net")) prefix = "pixiv";
                 else if (url.Contains("bilibili.com")) prefix = "bilibili";
@@ -336,36 +332,30 @@ namespace Koxmix.Controls
                     return;
                 }
 
-                string logosFolder = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Logos");
-                string logoPath = null;
-
-                if (Directory.Exists(logosFolder))
-                {
-                    logoPath = Directory.GetFiles(logosFolder, $"{prefix}.*").FirstOrDefault();
-                }
-
                 try
                 {
-                    if (!string.IsNullOrEmpty(logoPath) && File.Exists(logoPath))
+                    var asm = System.Reflection.Assembly.GetExecutingAssembly();
+                    string resName = asm.GetManifestResourceNames()
+                        .FirstOrDefault(r => r.IndexOf($".Logos.{prefix}.", StringComparison.OrdinalIgnoreCase) >= 0);
+
+                    if (!string.IsNullOrEmpty(resName))
                     {
-                        using var fs = new FileStream(logoPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
-                        using var tempImg = Image.FromStream(fs);
-                        var finalBmp = new Bitmap(tempImg);
-                        _iconCache[prefix] = finalBmp;
-                        picPlatformIcon.Image = finalBmp;
-                        picPlatformIcon.BackColor = Color.Transparent;
-                    }
-                    else
-                    {
-                        picPlatformIcon.Image = null;
-                        picPlatformIcon.BackColor = Color.FromArgb(90, 90, 90);
+                        using var stream = asm.GetManifestResourceStream(resName);
+                        if (stream != null)
+                        {
+                            using var tempImg = Image.FromStream(stream);
+                            var finalBmp = new Bitmap(tempImg);
+                            _iconCache[prefix] = finalBmp;
+                            picPlatformIcon.Image = finalBmp;
+                            picPlatformIcon.BackColor = Color.Transparent;
+                            return;
+                        }
                     }
                 }
-                catch
-                {
-                    picPlatformIcon.Image = null;
-                    picPlatformIcon.BackColor = Color.FromArgb(90, 90, 90);
-                }
+                catch { }
+
+                picPlatformIcon.Image = null;
+                picPlatformIcon.BackColor = Color.FromArgb(90, 90, 90);
             }
         }
 

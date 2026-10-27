@@ -1,4 +1,5 @@
-﻿using System;
+﻿using Koxmix.Utils;
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
@@ -31,10 +32,14 @@ namespace Koxmix.Engines
             string tempJpg = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}.jpg");
             try
             {
+                string ext = Path.GetExtension(videoPath).ToLowerInvariant();
+                bool isStillOrGif = ext == ".webp" || ext == ".avif" || ext == ".gif";
+                string seekArg = isStillOrGif ? "" : "-ss 00:00:01 ";
+
                 var psi = new ProcessStartInfo
                 {
-                    FileName = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "ffmpeg.exe"),
-                    Arguments = $"-ss 00:00:01 -i \"{videoPath}\" -vframes 1 -q:v 2 -y \"{tempJpg}\"",
+                    FileName = Path.Combine(AppUtils.DataDir, "ffmpeg.exe"),
+                    Arguments = $"{seekArg}-i \"{videoPath}\" -vframes 1 -q:v 2 -y \"{tempJpg}\"",
                     CreateNoWindow = true,
                     UseShellExecute = false
                 };
@@ -67,7 +72,7 @@ namespace Koxmix.Engines
             {
                 var psi = new ProcessStartInfo
                 {
-                    FileName = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "ffmpeg.exe"),
+                    FileName = Path.Combine(AppUtils.DataDir, "ffmpeg.exe"),
                     Arguments = $"-i \"{audioPath}\" -an -vframes 1 -q:v 2 -y \"{tempJpg}\"",
                     CreateNoWindow = true,
                     UseShellExecute = false
@@ -118,7 +123,7 @@ namespace Koxmix.Engines
 
                 if (targetMedia == null) return;
 
-                string ffmpegExe = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "ffmpeg.exe");
+                string ffmpegExe = Path.Combine(AppUtils.DataDir, "ffmpeg.exe");
                 if (!File.Exists(ffmpegExe)) return;
 
                 bool isVideo = targetMedia.Extension.Equals(".mp4", StringComparison.OrdinalIgnoreCase) ||

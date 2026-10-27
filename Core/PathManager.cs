@@ -1,7 +1,8 @@
-﻿using System;
+﻿using Koxmix.Utils;
+using Newtonsoft.Json;
+using System;
 using System.Collections.Generic;
 using System.IO;
-using Newtonsoft.Json;
 
 namespace Koxmix.Core
 {
@@ -21,7 +22,7 @@ namespace Koxmix.Core
 
     public static class PathManager
     {
-        private static readonly string ConfigFilePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "koxmix_config.json");
+        private static readonly string ConfigFilePath = Path.Combine(AppUtils.DataDir, "koxmix_config.json");
         private static readonly object _lock = new object();
         private static AppConfigData _config;
 
@@ -140,7 +141,7 @@ namespace Koxmix.Core
             if (url.Contains("pixiv.net")) return paths[5];
             if (url.Contains("nhentai.net")) return paths[6];
             if (url.Contains("hitomi.la")) return paths[7];
-            if (url.Contains("facebook.com") || url.Contains("fb.me")) return paths[8];
+            if (url.Contains("facebook.com") || url.Contains("fb.me") || url.Contains("fb.watch")) return paths[8];
 
             return paths[0];
         }

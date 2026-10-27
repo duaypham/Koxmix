@@ -23,8 +23,7 @@ namespace Koxmix.Downloaders
 
             string extractId = UrlUtils.ExtractFbPostId(ctx.Url);
 
-            // Kiểm tra trùng lặp (nhận diện cả file .zip, thư mục và ảnh đơn)
-            if (!string.IsNullOrEmpty(extractId) && extractId.Length < 15)
+            if (!string.IsNullOrEmpty(extractId) && !System.Text.RegularExpressions.Regex.IsMatch(extractId, @"^\d{8}_\d{6}$"))
             {
                 var existingZips = new DirectoryInfo(targetFolder).GetFiles($"*{extractId}*.zip", SearchOption.TopDirectoryOnly).ToList();
                 var existingDirs = new DirectoryInfo(targetFolder).GetDirectories($"*{extractId}*", SearchOption.TopDirectoryOnly).ToList();
@@ -96,7 +95,7 @@ namespace Koxmix.Downloaders
                     await _cliRunner.DownloadGalleryAsync(ctx.Url, tempFolder, ctx.Token, useCookies: true);
                     downloadSuccess = true;
                 }
-                catch (Exception ex)
+                catch (Exception ex) when (!ctx.Token.IsCancellationRequested)
                 {
                     originalError = ex;
                     ctx.OnStatusChanged?.Invoke("Trying guest mode...");
@@ -105,7 +104,7 @@ namespace Koxmix.Downloaders
                         await _cliRunner.DownloadGalleryAsync(ctx.Url, tempFolder, ctx.Token, useCookies: false);
                         downloadSuccess = true;
                     }
-                    catch { downloadSuccess = false; }
+                    catch when (!ctx.Token.IsCancellationRequested) { downloadSuccess = false; }
                 }
                 finally
                 {

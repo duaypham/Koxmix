@@ -4,8 +4,11 @@ obj/
 *.user
 Downloads/
 BrowserData/
+Koxmix_Data/
+Publish_SingleExe/
 *.exe
 *.zip
 app_cookies.txt
 koxmix_config.json
 app_useragent.txt
+history.txt
