@@ -60,7 +60,7 @@ namespace Koxmix.Downloaders
 
             string pixivId = Regex.Match(ctx.Url, @"(?:illust_id=|artworks/)(\d+)").Groups[1].Value;
             if (string.IsNullOrEmpty(pixivId))
-                throw new ArgumentException("Không tìm thấy ID Pixiv trong URL.");
+                throw new ArgumentException("Could not find Pixiv ID in the URL.");
 
             var existingDirs = new DirectoryInfo(targetFolder).GetDirectories($"*({pixivId})*", SearchOption.TopDirectoryOnly).ToList();
             var existingFiles = new DirectoryInfo(targetFolder).GetFiles($"*{pixivId}*.*", SearchOption.TopDirectoryOnly)
@@ -92,7 +92,7 @@ namespace Koxmix.Downloaders
 
             if (!metaRes.IsSuccessStatusCode || metaJson.Contains("\"error\":true"))
             {
-                throw new Exception($"[Pixiv] Không thể truy cập ID {pixivId}.\nNguyên nhân: Tác phẩm bị xóa, hoặc giới hạn R-18. Vui lòng bấm 'Cookies', đăng nhập lại Pixiv và lưu Cookie mới!");
+                throw new Exception($"[Pixiv] Could not access ID {pixivId}.\nReason: Artwork deleted, or R-18 restriction. Please click 'Cookies', log in to Pixiv again, and save the new Cookie!");
             }
 
             JObject metaObj = JObject.Parse(metaJson);
@@ -102,7 +102,7 @@ namespace Koxmix.Downloaders
 
             if (illustType == 2)
             {
-                throw new NotSupportedException("[Pixiv] Tác phẩm này là ảnh động (Ugoira). Koxmix hiện tại chỉ hỗ trợ tải ảnh tĩnh (Illust) hoặc Truyện tranh (Manga).");
+                throw new NotSupportedException("[Pixiv] This artwork is an animated image (Ugoira). Koxmix currently only supports downloading static images (Illust) or manga (Manga).");
             }
 
             string safeTitle = FormatUtils.SanitizeFileName(rawTitle, 80);
@@ -117,7 +117,7 @@ namespace Koxmix.Downloaders
             JArray body = (JArray)data["body"];
 
             if (body == null || body.Count == 0)
-                throw new Exception("Không tìm thấy dữ liệu ảnh.");
+                throw new Exception("No image data found.");
 
             List<string> imageUrls = body.Select(item => item["urls"]["original"].ToString()).ToList();
 
@@ -205,7 +205,7 @@ namespace Koxmix.Downloaders
                     .Where(f => !f.EndsWith(".part", StringComparison.OrdinalIgnoreCase)).ToArray();
                 if (downloadedFiles.Length < totalImages)
                 {
-                    throw new HttpRequestException($"Tải thiếu ảnh Pixiv ({downloadedFiles.Length}/{totalImages}) do lỗi kết nối, đang thử tải bù...");
+                    throw new HttpRequestException($"Missing Pixiv images ({downloadedFiles.Length}/{totalImages}) due to connection errors, retrying remaining...");
                 }
 
                 ctx.OnStatusChanged?.Invoke("Packaging album into .zip...");
@@ -214,7 +214,7 @@ namespace Koxmix.Downloaders
             }
             else if (string.IsNullOrEmpty(sampleFilePath) || !File.Exists(sampleFilePath))
             {
-                throw new HttpRequestException("Tải ảnh đơn Pixiv thất bại do lỗi kết nối.");
+                throw new HttpRequestException("Failed to download single Pixiv image due to connection error.");
             }
 
             string displayTitle = isMultiple ? $"[Pixiv] {safeTitle} - {safeAuthor}" : safeTitle;
@@ -230,7 +230,6 @@ namespace Koxmix.Downloaders
             {
                 return nameNoExt.Substring(0, nameNoExt.Length - idSuffix.Length);
             }
-            // Nếu là Ảnh đơn: "Pixiv_Title_123456" -> Lấy "Title"
             string singlePrefix = "Pixiv_";
             string singleSuffix = $"_{pixivId}";
             if (nameNoExt.StartsWith(singlePrefix, StringComparison.OrdinalIgnoreCase) &&

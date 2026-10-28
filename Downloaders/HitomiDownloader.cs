@@ -22,7 +22,7 @@ namespace Koxmix.Downloaders
             string targetFolder = ctx.TargetFolder;
             string extractId = Regex.Match(ctx.Url, @"(?:galleries/|cg/|manga/|doujinshi/)[^/]*?(\d+)(?:\.html|/|$)").Groups[1].Value;
             if (string.IsNullOrEmpty(extractId))
-                throw new ArgumentException("Không tìm thấy ID của Hitomi trong URL.");
+                throw new ArgumentException("Could not find Hitomi ID in the URL.");
 
             Directory.CreateDirectory(targetFolder);
             var existingZips = new DirectoryInfo(targetFolder).GetFiles($"*[Hitomi_{extractId}]*.zip").ToList();
@@ -118,7 +118,7 @@ namespace Koxmix.Downloaders
             if (downloadedFiles.Length == 0)
             {
                 try { Directory.Delete(finalPath, true); } catch { }
-                throw new Exception("Không tải được ảnh nào. Có thể Hitomi đã thay đổi thuật toán, hãy thử khởi động lại ứng dụng để tự cập nhật gallery-dl.");
+                throw new Exception("No images could be downloaded. Hitomi may have changed its algorithm; please restart the application to auto-update gallery-dl.");
             }
 
             ctx.OnStatusChanged?.Invoke("Packaging manga into .zip...");

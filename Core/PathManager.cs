@@ -131,8 +131,6 @@ namespace Koxmix.Core
             var paths = GetAllCategoryPaths();
 
             if (string.IsNullOrEmpty(url)) return paths[0];
-
-            // Bất kể tải Video hay MP3 đều lưu chung vào đúng thư mục của nền tảng đó
             if (url.Contains("youtube.com") || url.Contains("youtu.be")) return paths[0];
             if (url.Contains("tiktok.com")) return paths[1];
             if (url.Contains("bilibili.com")) return paths[2];

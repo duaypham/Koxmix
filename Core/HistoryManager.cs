@@ -50,13 +50,12 @@ namespace Koxmix.Core
                                 if (parts.Length < 4) return false;
 
                                 bool sameUrl = parts[0].Equals(url ?? "", StringComparison.OrdinalIgnoreCase);
-                                if (!sameUrl) return true; // Khác URL -> Giữ lại
+                                if (!sameUrl) return true;
 
                                 string oldTitle = parts[1];
                                 try { oldTitle = Encoding.UTF8.GetString(Convert.FromBase64String(parts[1])); } catch { }
                                 bool oldIsMp3 = IsMp3HistoryEntry(oldTitle, parts[2]);
 
-                                // Nếu cùng URL nhưng khác chế độ (1 cái MP4, 1 cái MP3) -> Giữ lại cả hai!
                                 return oldIsMp3 != newIsMp3;
                             })
                             .ToList();

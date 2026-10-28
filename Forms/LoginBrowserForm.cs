@@ -241,7 +241,6 @@ namespace Koxmix.Forms
                     _webView.Dispose();
                     _webView = null;
                 }
-                // Thu hồi ngay bộ nhớ của tiến trình Chromium giống cơ chế gc_collect() của Hitomi Downloader
                 GC.Collect();
                 GC.WaitForPendingFinalizers();
             }

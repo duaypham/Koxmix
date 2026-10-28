@@ -208,20 +208,24 @@ namespace Koxmix.Forms
             return true;
         }
 
-        #region Khởi tạo & Cập nhật Thư viện lõi
+        #region Initialize & Update Core Engines
 
         private async void InitializeDownloader()
         {
             lblStatus.Text = "Checking and updating core engines (yt-dlp, gallery-dl, ffmpeg)...";
             btnDownload.Enabled = false;
 
-            await AppUtils.EnsureAndUpdateAllToolsAsync(status =>
+            await Task.Run(() => AppUtils.EnsureAndUpdateAllToolsAsync(status =>
             {
-                if (!IsDisposed)
+                try
                 {
-                    this.BeginInvoke(new Action(() => lblStatus.Text = status));
+                    if (!IsDisposed && IsHandleCreated)
+                    {
+                        this.BeginInvoke(new Action(() => lblStatus.Text = status));
+                    }
                 }
-            });
+                catch { }
+            }));
 
             lblStatus.Text = "Ready to download.";
             btnDownload.Enabled = true;
@@ -229,7 +233,7 @@ namespace Koxmix.Forms
 
         #endregion
 
-        #region Tầng UI - Xử lý Tải xuống (Batch Download)
+        #region UI Layer - Batch Download Processing
 
         private async void btnDownload_Click(object sender, EventArgs e)
         {
@@ -491,7 +495,7 @@ namespace Koxmix.Forms
 
         #endregion
 
-        #region Các Hàm Tiện Ích UI & Sự kiện Form
+        #region UI Utilities & Form Events
 
         private void CleanupZombieTempFolders()
         {
@@ -613,7 +617,7 @@ namespace Koxmix.Forms
 
         #endregion
 
-        #region Xử lý Menu Chuột phải (Context Menu)
+       #region Context Menu Handling
 
         private void InitContextMenu()
         {
@@ -842,7 +846,7 @@ namespace Koxmix.Forms
 
         #endregion
 
-        #region Setup Giao diện Dark Theme
+        #region Dark Theme Layout Setup
 
         private void SetupDarkLayout()
         {

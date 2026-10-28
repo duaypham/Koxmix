@@ -61,7 +61,7 @@ namespace Koxmix.Utils
                 DriveInfo drive = new DriveInfo(root);
                 if (drive.AvailableFreeSpace < requiredBytes)
                 {
-                    throw new IOException($"[Lỗi Ổ Cứng] Không đủ dung lượng trống trên phân vùng ({root}). Cần ít nhất {FormatFileSize(requiredBytes)} để thực hiện tải xuống.");
+                    throw new IOException($"[Disk Error] Not enough free space on drive ({root}). At least {FormatFileSize(requiredBytes)} is required to download.");
                 }
             }
             catch (IOException) { throw; }
@@ -87,15 +87,11 @@ namespace Koxmix.Utils
             }
         }
 
-        /// <summary>
-        /// Tạo ảnh bìa nhúng sẵn, đóng gói toàn bộ thư mục thành .zip và xóa thư mục gốc.
-        /// </summary>
         public static string PackFolderToZip(string folderPath, bool deleteSourceFolder = true)
         {
             if (string.IsNullOrWhiteSpace(folderPath) || !Directory.Exists(folderPath))
                 return folderPath;
 
-            // Tạo sẵn .thumb.jpg bên trong thư mục trước khi nén để đọc ảnh bìa từ .zip chỉ mất 1ms
             ThumbnailExtractor.PrepareFolderThumbnailBeforeZip(folderPath);
 
             string zipPath = folderPath.TrimEnd('\\', '/') + ".zip";

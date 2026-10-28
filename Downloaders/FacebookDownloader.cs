@@ -121,8 +121,6 @@ namespace Koxmix.Downloaders
                 {
                     throw new Exception(originalError != null ? originalError.ToString() : "Gallery-dl output empty.");
                 }
-
-                // Nếu bài viết chỉ có đúng 1 ảnh -> Lưu trực tiếp ra thư mục đích
                 if (newFiles.Count == 1)
                 {
                     FileInfo singleFile = newFiles[0];
@@ -136,8 +134,6 @@ namespace Koxmix.Downloaders
                     ctx.OnSuccess?.Invoke(finalFi.Name, FormatUtils.FormatFileSize(finalFi.Length), finalFi.FullName);
                     return;
                 }
-
-                // Nếu bài viết có từ 2 ảnh trở lên -> Gom vào thư mục và đóng gói thành .zip
                 ctx.OnStatusChanged?.Invoke("Organizing files...");
                 string captionFolder = FormatUtils.SanitizeFileName(newFiles[0].Directory.Name, 80);
 

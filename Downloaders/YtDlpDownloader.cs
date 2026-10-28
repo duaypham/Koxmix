@@ -16,8 +16,6 @@ namespace Koxmix.Downloaders
     public class YtDlpDownloader : IDownloader
     {
         public bool CanHandle(string url) => !string.IsNullOrEmpty(url);
-
-        [Obsolete]
         public async Task DownloadAsync(DownloadContext ctx)
         {
             string targetFolder = ctx.TargetFolder;
@@ -108,7 +106,6 @@ namespace Koxmix.Downloaders
             {
                 IgnoreErrors = true,
                 EmbedChapters = true,
-                Referer = refererHeader,
                 WindowsFilenames = true,
                 ConcurrentFragments = 4,
                 SleepInterval = 1,
@@ -116,6 +113,10 @@ namespace Koxmix.Downloaders
             };
 
             options.AddCustomOption<bool>("--rm-cache-dir", true);
+            if (!string.IsNullOrEmpty(refererHeader))
+            {
+                options.AddCustomOption<string>("--add-header", $"Referer:{refererHeader}");
+            }
 
             string cookieFile = Path.Combine(AppUtils.DataDir, "app_cookies.txt");
             if (File.Exists(cookieFile))
@@ -206,7 +207,7 @@ namespace Koxmix.Downloaders
                 if (string.IsNullOrEmpty(playlistFolder) || !Directory.Exists(playlistFolder) ||
                     Directory.GetFiles(playlistFolder, "*.*", SearchOption.TopDirectoryOnly).Length == 0)
                 {
-                    throw new Exception("Không tải được video/nhạc nào từ Playlist này (Playlist có thể bị ẩn hoặc cần cập nhật Cookie).");
+                    throw new Exception("No video/audio could be downloaded from this playlist (The playlist may be private or require updated Cookies).");
                 }
 
                 string rawFolderName = new DirectoryInfo(playlistFolder).Name;
@@ -276,12 +277,6 @@ namespace Koxmix.Downloaders
             ctx.OnSuccess?.Invoke(fi.Name, FormatUtils.FormatFileSize(fi.Length), finalPath);
         }
 
-        /// <summary>
-        /// Lọc phụ đề theo đúng logic:
-        /// - Nếu có Tiếng Việt và/hoặc Tiếng Anh -> Giữ cả Việt và Anh, xóa toàn bộ phụ đề ngôn ngữ khác.
-        /// - Nếu KHÔNG có cả Việt lẫn Anh -> Chọn đúng 1 phụ đề thay thế theo thứ tự ưu tiên (ja -> zh -> ko -> id -> khác).
-        /// Sau đó dùng FFmpeg nhúng thẳng vào file .mp4 và di chuyển file .srt vào thư mục Subtitles.
-        /// </summary>
         private static void FilterAndEmbedSubtitlesForVideo(string videoPath, string subDir, string ffmpegExe)
         {
             try
@@ -320,13 +315,11 @@ namespace Koxmix.Downloaders
 
                 if (viSub != null || enSub != null)
                 {
-                    // Có Việt hoặc Anh -> Lấy cả Việt và Anh (nếu có)
                     if (viSub != null) selectedSubs.Add((viSub.File, viSub.Lang));
                     if (enSub != null) selectedSubs.Add((enSub.File, enSub.Lang));
                 }
                 else
                 {
-                    // Không có cả Việt lẫn Anh -> Lấy đúng 1 phụ đề ưu tiên nhất
                     string[] priorityPrefixes = { "ja", "zh", "ko", "id", "es", "fr", "ru", "th" };
                     var fallbackSub = parsedSubs
                         .OrderBy(x =>
@@ -344,7 +337,6 @@ namespace Koxmix.Downloaders
                     selectedSubs.Add((fallbackSub.File, fallbackSub.Lang));
                 }
 
-                // Xóa ngay các file phụ đề thừa không nằm trong danh sách được chọn
                 var keptPaths = new HashSet<string>(selectedSubs.Select(s => s.File.FullName), StringComparer.OrdinalIgnoreCase);
                 foreach (var sub in allSubFiles)
                 {
@@ -354,7 +346,6 @@ namespace Koxmix.Downloaders
                     }
                 }
 
-                // Nhúng các phụ đề đã chọn vào file MP4 bằng FFmpeg
                 if (File.Exists(ffmpegExe) && selectedSubs.Count > 0)
                 {
                     string tempVideoPath = Path.Combine(directoryName, $"{Guid.NewGuid():N}_temp.mp4");
@@ -372,7 +363,6 @@ namespace Koxmix.Downloaders
                             var (isoCode, displayTitle) = GetIsoLangInfo(selectedSubs[i].Lang);
                             metaArgs += $"-metadata:s:s:{i} language={isoCode} -metadata:s:s:{i} handler_name=\"{displayTitle}\" -metadata:s:s:{i} title=\"{displayTitle}\" ";
 
-                            // Đặt cờ default cho phụ đề đầu tiên để trình phát tự động hiển thị ngay khi mở video
                             if (i == 0)
                             {
                                 metaArgs += "-disposition:s:0 default ";
@@ -402,7 +392,6 @@ namespace Koxmix.Downloaders
                     }
                 }
 
-                // Di chuyển các file .srt đã chọn vào thư mục Subtitles
                 Directory.CreateDirectory(subDir);
                 foreach (var (subFile, _) in selectedSubs)
                 {
@@ -422,7 +411,7 @@ namespace Koxmix.Downloaders
             if (string.IsNullOrWhiteSpace(langTag)) return ("und", "Subtitle");
             string lower = langTag.ToLowerInvariant();
 
-            if (lower.StartsWith("vi")) return ("vie", "Tiếng Việt");
+            if (lower.StartsWith("vi")) return ("vie", "Vietnamese");
             if (lower.StartsWith("en")) return ("eng", "English");
             if (lower.StartsWith("ja")) return ("jpn", "Japanese");
             if (lower.StartsWith("zh")) return ("zho", "Chinese");

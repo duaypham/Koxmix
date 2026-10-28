@@ -2,8 +2,11 @@
 using System.Diagnostics;
 using System.IO;
 using System.IO.Compression;
+using System.Linq;
 using System.Net.Http;
+using System.Reflection;
 using System.Threading.Tasks;
+using Newtonsoft.Json.Linq;
 
 namespace Koxmix.Utils
 {
@@ -19,11 +22,17 @@ namespace Koxmix.Utils
             try { di.Attributes |= FileAttributes.Hidden; } catch { }
             return dir;
         }
+
         private static readonly HttpClient _httpClient = new HttpClient { Timeout = TimeSpan.FromMinutes(10) };
 
         static AppUtils()
         {
             _httpClient.DefaultRequestHeaders.Add("User-Agent", "Koxmix-Downloader-Updater/1.0");
+        }
+
+        private static void SafeStatus(Action<string> onStatus, string message)
+        {
+            try { onStatus?.Invoke(message); } catch { }
         }
 
         public static async Task EnsureAndUpdateAllToolsAsync(Action<string> onStatus)
@@ -45,7 +54,7 @@ namespace Koxmix.Utils
             try
             {
                 await DownloadFileWithProgressAsync(denoZipUrl, tempZipPath, "Downloading Deno JS Runtime", onStatus);
-                onStatus?.Invoke("Extracting deno.exe...");
+                SafeStatus(onStatus, "Extracting deno.exe...");
 
                 await Task.Run(() =>
                 {
@@ -76,18 +85,17 @@ namespace Koxmix.Utils
             {
                 if (!File.Exists(ytdlpPath))
                 {
-                    onStatus?.Invoke("Downloading yt-dlp.exe...");
+                    SafeStatus(onStatus, "Downloading yt-dlp.exe...");
                     await DownloadFileWithProgressAsync(downloadUrl, ytdlpPath, "yt-dlp.exe", onStatus);
                 }
                 else
                 {
-                    onStatus?.Invoke("Checking updates for yt-dlp...");
+                    SafeStatus(onStatus, "Checking updates for yt-dlp...");
                     await RunSelfUpdateProcessAsync(ytdlpPath, "-U");
                 }
             }
             catch
             {
-                // Fallback sang thư viện YoutubeDLSharp nếu GitHub bị nghẽn
                 if (!File.Exists(ytdlpPath))
                 {
                     try { await YoutubeDLSharp.Utils.DownloadYtDlp(BaseDir); } catch { }
@@ -98,22 +106,91 @@ namespace Koxmix.Utils
         public static async Task EnsureAndUpdateGalleryDlAsync(Action<string> onStatus)
         {
             string galleryDlPath = Path.Combine(BaseDir, "gallery-dl.exe");
-            const string downloadUrl = "https://github.com/mikf/gallery-dl/releases/latest/download/gallery-dl.exe";
 
             try
             {
                 if (!File.Exists(galleryDlPath))
                 {
-                    onStatus?.Invoke("Downloading gallery-dl.exe...");
-                    await DownloadFileWithProgressAsync(downloadUrl, galleryDlPath, "gallery-dl.exe", onStatus);
+                    SafeStatus(onStatus, "Extracting gallery-dl.exe...");
+                    if (TryExtractEmbeddedTool("gallery-dl.exe", galleryDlPath))
+                    {
+                        SafeStatus(onStatus, "Checking updates for gallery-dl...");
+                        await RunSelfUpdateProcessAsync(galleryDlPath, "-U");
+                        return;
+                    }
+
+                    SafeStatus(onStatus, "Downloading gallery-dl.exe...");
+                    const string downloadUrl = "https://github.com/mikf/gallery-dl/releases/latest/download/gallery-dl.exe";
+                    try
+                    {
+                        await DownloadFileWithProgressAsync(downloadUrl, galleryDlPath, "gallery-dl.exe", onStatus);
+                    }
+                    catch
+                    {
+                        string apiAssetUrl = await GetLatestGithubExeUrlAsync("mikf", "gallery-dl");
+                        if (!string.IsNullOrEmpty(apiAssetUrl))
+                        {
+                            await DownloadFileWithProgressAsync(apiAssetUrl, galleryDlPath, "gallery-dl.exe", onStatus);
+                        }
+                    }
                 }
                 else
                 {
-                    onStatus?.Invoke("Checking updates for gallery-dl...");
+                    SafeStatus(onStatus, "Checking updates for gallery-dl...");
                     await RunSelfUpdateProcessAsync(galleryDlPath, "-U");
                 }
             }
             catch { }
+        }
+
+        private static bool TryExtractEmbeddedTool(string fileName, string destinationPath)
+        {
+            try
+            {
+                var asm = Assembly.GetExecutingAssembly();
+                string resName = asm.GetManifestResourceNames()
+                    .FirstOrDefault(r => r.EndsWith(fileName, StringComparison.OrdinalIgnoreCase));
+
+                if (string.IsNullOrEmpty(resName)) return false;
+
+                using Stream stream = asm.GetManifestResourceStream(resName);
+                if (stream == null) return false;
+
+                using (var fs = new FileStream(destinationPath, FileMode.Create, FileAccess.Write, FileShare.None))
+                {
+                    stream.CopyTo(fs);
+                }
+
+                return File.Exists(destinationPath) && new FileInfo(destinationPath).Length > 0;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        private static async Task<string> GetLatestGithubExeUrlAsync(string owner, string repo)
+        {
+            try
+            {
+                string apiUrl = $"https://api.github.com/repos/{owner}/{repo}/releases/latest";
+                string json = await _httpClient.GetStringAsync(apiUrl);
+                JObject release = JObject.Parse(json);
+                if (release["assets"] is JArray assets)
+                {
+                    foreach (var asset in assets)
+                    {
+                        string name = asset["name"]?.ToString() ?? "";
+                        string url = asset["browser_download_url"]?.ToString() ?? "";
+                        if (name.Equals("gallery-dl.exe", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrEmpty(url))
+                        {
+                            return url;
+                        }
+                    }
+                }
+            }
+            catch { }
+            return null;
         }
 
         public static async Task EnsureAndUpdateFFmpegAsync(Action<string> onStatus)
@@ -126,7 +203,6 @@ namespace Koxmix.Utils
 
             if (!isMissing && !isOutdated) return;
 
-            // Kho FFmpeg chính thức do đội ngũ yt-dlp biên dịch, tối ưu riêng cho việc nhúng Subtitles & Chapters
             const string ffmpegZipUrl = "https://github.com/yt-dlp/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip";
             string tempZipPath = Path.Combine(Path.GetTempPath(), $"koxmix_ffmpeg_{Guid.NewGuid():N}.zip");
 
@@ -135,7 +211,7 @@ namespace Koxmix.Utils
                 string actionText = isMissing ? "Downloading FFmpeg & FFprobe" : "Updating FFmpeg & FFprobe";
                 await DownloadFileWithProgressAsync(ffmpegZipUrl, tempZipPath, actionText, onStatus);
 
-                onStatus?.Invoke("Extracting FFmpeg & FFprobe...");
+                SafeStatus(onStatus, "Extracting FFmpeg & FFprobe...");
                 await Task.Run(() =>
                 {
                     using ZipArchive archive = ZipFile.OpenRead(tempZipPath);
@@ -194,7 +270,7 @@ namespace Koxmix.Utils
                         if (percent != lastReportedPercent && percent % 5 == 0)
                         {
                             lastReportedPercent = percent;
-                            onStatus?.Invoke($"{label} ({percent}%)...");
+                            SafeStatus(onStatus, $"{label} ({percent}%)...");
                         }
                     }
                 }

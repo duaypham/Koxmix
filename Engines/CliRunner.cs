@@ -28,7 +28,7 @@ namespace Koxmix.Engines
         public async Task<bool> DownloadGalleryAsync(string url, string outputFolder, CancellationToken ct, bool useCookies = true)
         {
             if (!File.Exists(_galleryDlPath))
-                throw new FileNotFoundException("Không tìm thấy gallery-dl.exe.", _galleryDlPath);
+                throw new FileNotFoundException("gallery-dl.exe not found.", _galleryDlPath);
 
             Directory.CreateDirectory(outputFolder);
 
@@ -55,7 +55,7 @@ namespace Koxmix.Engines
 
             string arguments =
                 $"{cookieArg}" +
-                $"--sleep-request 0.5-1.5 " + // Giãn nhịp request ngẫu nhiên chống chặn Bot
+                $"--sleep-request 0.5-1.5 " +
                 $"-o \"http.headers.User-Agent={realUa}\" " +
                 $"-o \"http.headers.Accept-Language=en-US,en;q=0.9\" " +
                 $"-d {QuoteArgument(outputFolder)} " +
@@ -77,9 +77,9 @@ namespace Koxmix.Engines
             string url, string outputFolder, bool extractMp3, CancellationToken ct, IProgress<string> progress = null)
         {
             if (!File.Exists(_ytDlpPath))
-                throw new FileNotFoundException("Không tìm thấy yt-dlp.exe.", _ytDlpPath);
+                throw new FileNotFoundException("yt-dlp.exe not found.", _ytDlpPath);
             if (!File.Exists(_ffmpegPath))
-                throw new FileNotFoundException("Không tìm thấy ffmpeg.exe.", _ffmpegPath);
+                throw new FileNotFoundException("ffmpeg.exe not found.", _ffmpegPath);
 
             Directory.CreateDirectory(outputFolder);
 
@@ -206,7 +206,7 @@ namespace Koxmix.Engines
                 if (await Task.WhenAny(processTask, timeoutTask) == timeoutTask)
                 {
                     try { if (!process.HasExited) process.Kill(true); } catch { }
-                    throw new TimeoutException("Máy chủ không phản hồi sau 15 phút. Tiến trình đã bị ép hủy để tránh treo phần mềm.");
+                    throw new TimeoutException("Server did not respond within 15 minutes. Process was forcefully terminated to prevent application hang.");
                 }
 
                 await processTask;

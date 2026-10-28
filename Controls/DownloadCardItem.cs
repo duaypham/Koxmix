@@ -32,13 +32,9 @@ namespace Koxmix.Controls
         private static readonly Color ColorAccent = Color.FromArgb(14, 116, 232);
         private static readonly Color ColorSuccess = Color.FromArgb(46, 204, 113);
         private static readonly Color ColorError = Color.FromArgb(231, 76, 60);
-
-        // Bộ đệm Font tĩnh dùng chung cho toàn bộ thẻ (Chống rò rỉ GDI Handle)
         private static readonly Font FontPlaceholder = new Font("Segoe UI", 9f, FontStyle.Bold);
         private static readonly Font FontTitle = new Font("Segoe UI", 10.5f, FontStyle.Regular);
         private static readonly Font FontSub = new Font("Segoe UI", 9f, FontStyle.Regular);
-
-        // Bộ đệm Icon nền tảng và HttpClient dùng chung
         private static readonly Dictionary<string, Image> _iconCache = new Dictionary<string, Image>(StringComparer.OrdinalIgnoreCase);
         private static readonly object _cacheLock = new object();
         private static readonly HttpClient _thumbClient = new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
@@ -420,8 +416,6 @@ namespace Koxmix.Controls
                 g.FillRectangle(progressBrush, 0, this.Height - 3, barWidth, 3);
             }
         }
-
-        // Giải phóng triệt để Bitmap Thumbnail khỏi RAM khi thẻ bị xóa (nhưng giữ lại Icon Cache dùng chung)
         protected override void Dispose(bool disposing)
         {
             if (disposing)

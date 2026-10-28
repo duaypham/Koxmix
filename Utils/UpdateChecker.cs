@@ -55,8 +55,8 @@ namespace Koxmix.Utils
                     {
                         DialogResult result = MessageBox.Show(
                             mainForm,
-                            $"Phát hiện phiên bản mới ({latestTag})!\n\nChi tiết cập nhật:\n{releaseNotes}\n\nBạn có muốn cập nhật tự động ngay bây giờ không?",
-                            "Cập nhật phần mềm",
+                            $"New version available ({latestTag})!\n\nRelease notes:\n{releaseNotes}\n\nWould you like to update automatically now?",
+                            "Software Update",
                             MessageBoxButtons.YesNo,
                             MessageBoxIcon.Information
                         );
@@ -65,11 +65,11 @@ namespace Koxmix.Utils
                         {
                             if (string.IsNullOrEmpty(downloadUrl))
                             {
-                                MessageBox.Show(mainForm, "Không tìm thấy file cài đặt trong bản phát hành.", "Lỗi Cập Nhật", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                                MessageBox.Show(mainForm, "No executable asset found in the latest release.", "Update Error", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                                 return;
                             }
 
-                            MessageBox.Show(mainForm, "Bản cập nhật đang được tải ngầm.\nPhần mềm sẽ tự động khởi động lại sau vài giây, vui lòng không tắt máy!", "Đang tải...", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                            MessageBox.Show(mainForm, "The update is downloading in the background.\nThe application will restart automatically in a few seconds.", "Downloading Update...", MessageBoxButtons.OK, MessageBoxIcon.Information);
                             await DownloadAndInstallUpdateAsync(downloadUrl);
                         }
                     }));
@@ -96,7 +96,7 @@ namespace Koxmix.Utils
 
                 string batchContent = $@"@echo off
 title Updating Koxmix...
-echo Vui long cho, phan mem dang duoc cap nhat...
+echo Please wait, Koxmix is updating...
 timeout /t 2 /nobreak > nul
 taskkill /f /im ""{processName}.exe"" > nul 2>&1
 :retry
@@ -122,7 +122,7 @@ del ""%~f0""";
             }
             catch (Exception ex)
             {
-                MessageBox.Show("Cập nhật tự động thất bại: " + ex.Message, "Lỗi", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                MessageBox.Show("Automatic update failed: " + ex.Message, "Update Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
     }

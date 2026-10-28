@@ -18,7 +18,6 @@ namespace Koxmix.Core
 
         public DownloadRouter()
         {
-            // Thứ tự ưu tiên: Các bộ tải chuyên biệt kiểm tra trước, YtDlpDownloader làm chốt chặn cuối cùng
             _downloaders = new List<IDownloader>
             {
                 new FacebookDownloader(),
@@ -84,7 +83,6 @@ namespace Koxmix.Core
 
                     if (currentAttempt < maxRetries && isNetworkGlitch)
                     {
-                        // Exponential Backoff (3s -> 6s -> 11s...) kèm Jitter ngẫu nhiên để tránh bị máy chủ khóa IP
                         int delaySeconds = (int)Math.Pow(2, currentAttempt) + Random.Shared.Next(1, 4);
                         for (int sec = delaySeconds; sec > 0; sec--)
                         {

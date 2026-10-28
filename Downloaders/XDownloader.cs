@@ -115,7 +115,7 @@ namespace Koxmix.Downloaders
                         }
                         catch (Exception ex3) when (!ctx.Token.IsCancellationRequested)
                         {
-                            throw new Exception("X.com đã chặn kết nối. Vui lòng bấm nút 'Cookies', đăng nhập vào X.com và lưu lại để phần mềm lấy giấy thông hành.\nChi tiết lỗi: " + ex3.Message);
+                            throw new Exception("X.com blocked the connection. Please click the 'Cookies' button, log in to X.com, and save to refresh your session.\nError details: " + ex3.Message);
                         }
                     }
                 }
@@ -133,13 +133,12 @@ namespace Koxmix.Downloaders
 
                 if (newFiles.Count == 0)
                 {
-                    throw new Exception("Không tải được dữ liệu. Link có thể chỉ chứa Text, hoặc bạn chưa làm mới Cookies đăng nhập X.com.");
+                    throw new Exception("Could not download media. The link might be a text-only post or you haven't refreshed the X.com login cookies.");
                 }
 
                 string prefixName = !string.IsNullOrEmpty(usernameMatch) ? $"X_{usernameMatch}" : "X_Media";
                 string idPart = !string.IsNullOrEmpty(tweetIdMatch) ? tweetIdMatch : DateTime.Now.ToString("yyyyMMdd_HHmmss");
 
-                // Nếu Tweet chỉ có 1 file -> Lưu trực tiếp ra thư mục đích
                 if (newFiles.Count == 1)
                 {
                     FileInfo singleFile = newFiles[0];
@@ -154,7 +153,6 @@ namespace Koxmix.Downloaders
                     return;
                 }
 
-                // Nếu Tweet có từ 2 file trở lên -> Đóng gói thành .zip
                 string albumFolderName = FormatUtils.SanitizeFileName($"[X] {prefixName}_{idPart}", 100);
                 string albumFolder = Path.Combine(targetFolder, albumFolderName);
                 Directory.CreateDirectory(albumFolder);

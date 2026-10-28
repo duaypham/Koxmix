@@ -111,13 +111,12 @@ namespace Koxmix.Downloaders
 
                 if (newFiles.Count == 0)
                 {
-                    throw new Exception("Không tải được dữ liệu. Link có thể là bài viết Text, hoặc bị đánh dấu 18+ (Cần cập nhật Cookie).");
+                    throw new Exception("Could not download media. The link might be a text-only post or marked 18+ (Cookies update required).");
                 }
 
                 string subPart = !string.IsNullOrEmpty(subreddit) ? $"Reddit_r-{subreddit}" : "Reddit";
                 string idPart = !string.IsNullOrEmpty(redditId) ? redditId : DateTime.Now.ToString("yyyyMMdd_HHmmss");
 
-                // Nếu bài viết chỉ có 1 file -> Lưu trực tiếp ra thư mục đích
                 if (newFiles.Count == 1)
                 {
                     FileInfo singleFile = newFiles[0];
@@ -132,7 +131,6 @@ namespace Koxmix.Downloaders
                     return;
                 }
 
-                // Nếu bài viết có từ 2 file trở lên -> Đóng gói thành .zip
                 string albumFolderName = FormatUtils.SanitizeFileName($"[{subPart}] Post_{idPart}", 100);
                 string albumFolder = Path.Combine(targetFolder, albumFolderName);
                 Directory.CreateDirectory(albumFolder);

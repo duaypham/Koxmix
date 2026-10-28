@@ -59,7 +59,7 @@ namespace Koxmix.Downloaders
 
             string galleryId = Regex.Match(ctx.Url, @"g/(\d+)").Groups[1].Value;
             if (string.IsNullOrEmpty(galleryId))
-                throw new ArgumentException("Không tìm thấy ID của nHentai trong URL.");
+                throw new ArgumentException("Could not find nHentai ID in the URL.");
 
             var existingZips = new DirectoryInfo(targetFolder).GetFiles($"*[nHentai_{galleryId}]*.zip").ToList();
             var existingDirs = new DirectoryInfo(targetFolder).GetDirectories($"*[nHentai_{galleryId}]*").ToList();
@@ -88,7 +88,7 @@ namespace Koxmix.Downloaders
             {
                 if (response.StatusCode == HttpStatusCode.Forbidden || response.StatusCode == HttpStatusCode.ServiceUnavailable)
                 {
-                    throw new Exception($"[Cloudflare Block] Vui lòng bấm nút 'Cookies', chọn nHentai và lưu lại để cập nhật!\nHTTP {(int)response.StatusCode}");
+                    throw new Exception($"[Cloudflare Block] Please click the 'Cookies' button, select nHentai, and save to update!\nHTTP {(int)response.StatusCode}");
                 }
                 throw new Exception($"[API Error] HTTP {(int)response.StatusCode}");
             }
@@ -106,7 +106,7 @@ namespace Koxmix.Downloaders
 
             JArray pages = (JArray)data["images"]?["pages"];
             if (pages == null || pages.Count == 0)
-                throw new Exception("Không tìm thấy trang truyện nào.");
+                throw new Exception("No manga pages found.");
 
             int totalImages = pages.Count;
             long totalBytes = 0;
@@ -181,7 +181,7 @@ namespace Koxmix.Downloaders
 
             if (downloadedFiles.Length < totalImages)
             {
-                throw new HttpRequestException($"Tải thiếu trang ({downloadedFiles.Length}/{totalImages}) do lỗi kết nối mạng, đang thử tải bù...");
+                throw new HttpRequestException($"Missing pages ({downloadedFiles.Length}/{totalImages}) due to network error, retrying remaining pages...");
             }
 
             ctx.OnStatusChanged?.Invoke("Packaging manga into .zip...");
