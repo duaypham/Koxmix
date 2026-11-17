@@ -66,8 +66,7 @@ namespace Koxmix.Forms
                 new SiteItem { Name = "TikTok", Url = "https://www.tiktok.com/login" },
                 new SiteItem { Name = "Pixiv", Url = "https://accounts.pixiv.net/login" },
                 new SiteItem { Name = "X (Twitter)", Url = "https://x.com/login" },
-                new SiteItem { Name = "Reddit", Url = "https://www.reddit.com/login/" },
-                new SiteItem { Name = "nHentai", Url = "https://nhentai.net/login/" },
+                new SiteItem { Name = "nHentai", Url = "https://nhentai.net/" },
                 new SiteItem { Name = "Hitomi.la", Url = "https://hitomi.la/" },
                 new SiteItem { Name = "Facebook", Url = "https://www.facebook.com/" },
                 new SiteItem { Name = "Bilibili", Url = "https://www.bilibili.com/" }
@@ -165,7 +164,6 @@ namespace Koxmix.Forms
                     "https://tiktok.com", "https://www.tiktok.com",
                     "https://pixiv.net", "https://www.pixiv.net", "https://accounts.pixiv.net",
                     "https://x.com", "https://twitter.com",
-                    "https://reddit.com", "https://www.reddit.com",
                     "https://nhentai.net", "https://hitomi.la",
                     "https://facebook.com", "https://www.facebook.com",
                     "https://bilibili.com", "https://www.bilibili.com", "https://space.bilibili.com"
@@ -200,18 +198,21 @@ namespace Koxmix.Forms
                     if (c.Name == "PHPSESSID") foundPixivSession = true;
 
                     string flag = "TRUE";
-                    string path = c.Path;
+                    string path = string.IsNullOrEmpty(c.Path) ? "/" : c.Path;
                     string secure = c.IsSecure ? "TRUE" : "FALSE";
 
-                    string rootDomain = c.Domain;
+                    string rootDomain = c.Domain.Trim();
                     if (!rootDomain.StartsWith(".")) rootDomain = "." + rootDomain.TrimStart('.');
 
                     sb.Append($"{rootDomain}\t{flag}\t{path}\t{secure}\t{fakeExpires}\t{c.Name}\t{c.Value}\n");
 
-                    if (!rootDomain.StartsWith(".www."))
+                    if (rootDomain.Equals(".pixiv.net", StringComparison.OrdinalIgnoreCase))
                     {
-                        string wwwDomain = ".www" + rootDomain;
-                        sb.Append($"{wwwDomain}\t{flag}\t{path}\t{secure}\t{fakeExpires}\t{c.Name}\t{c.Value}\n");
+                        sb.Append($".www.pixiv.net\t{flag}\t{path}\t{secure}\t{fakeExpires}\t{c.Name}\t{c.Value}\n");
+                    }
+                    else if (rootDomain.Equals(".x.com", StringComparison.OrdinalIgnoreCase))
+                    {
+                        sb.Append($".twitter.com\t{flag}\t{path}\t{secure}\t{fakeExpires}\t{c.Name}\t{c.Value}\n");
                     }
                 }
 

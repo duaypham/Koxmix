@@ -24,7 +24,8 @@ namespace Koxmix.Core
             }
             if (!string.IsNullOrEmpty(title) &&
                 (title.EndsWith(".mp3", StringComparison.OrdinalIgnoreCase) ||
-                 title.StartsWith("[Playlist MP3]", StringComparison.OrdinalIgnoreCase)))
+                 title.StartsWith("[Playlist MP3]", StringComparison.OrdinalIgnoreCase) ||
+                 title.Contains(" MP3]", StringComparison.OrdinalIgnoreCase)))
             {
                 return true;
             }

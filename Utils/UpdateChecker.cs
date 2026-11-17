@@ -12,7 +12,7 @@ namespace Koxmix.Utils
     public static class UpdateChecker
     {
         private const string GithubUser = "duaypham";
-        private const string GithubRepo = "koxmix_media_downloader";
+        private const string GithubRepo = "Koxmix";
 
         public static async Task CheckForUpdatesAsync(Form mainForm)
         {

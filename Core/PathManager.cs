@@ -11,7 +11,6 @@ namespace Koxmix.Core
         public string YoutubePath { get; set; } = "";
         public string TikTokPath { get; set; } = "";
         public string BilibiliPath { get; set; } = "";
-        public string RedditPath { get; set; } = "";
         public string XPath { get; set; } = "";
         public string PixivPath { get; set; } = "";
         public string NHentaiPath { get; set; } = "";
@@ -27,7 +26,7 @@ namespace Koxmix.Core
         private static AppConfigData _config;
 
         public static readonly string[] CategoryNames = {
-            "YouTube", "TikTok", "Bilibili", "Reddit", "X (Twitter)",
+            "YouTube", "TikTok", "Bilibili", "X (Twitter)",
             "Pixiv", "nHentai", "Hitomi.la", "Facebook"
         };
 
@@ -95,7 +94,6 @@ namespace Koxmix.Core
                 GetValidPath(Config.YoutubePath, "Koxmix_YouTube"),
                 GetValidPath(Config.TikTokPath, "Koxmix_TikTok"),
                 GetValidPath(Config.BilibiliPath, "Koxmix_Bilibili"),
-                GetValidPath(Config.RedditPath, "Koxmix_Reddit"),
                 GetValidPath(Config.XPath, "Koxmix_X"),
                 GetValidPath(Config.PixivPath, "Koxmix_Pixiv"),
                 GetValidPath(Config.NHentaiPath, "Koxmix_nHentai"),
@@ -106,17 +104,16 @@ namespace Koxmix.Core
 
         public static void SaveAllCategoryPaths(string[] paths)
         {
-            if (paths == null || paths.Length < 9) return;
+            if (paths == null || paths.Length < 8) return;
 
             Config.YoutubePath = paths[0]?.Trim() ?? "";
             Config.TikTokPath = paths[1]?.Trim() ?? "";
             Config.BilibiliPath = paths[2]?.Trim() ?? "";
-            Config.RedditPath = paths[3]?.Trim() ?? "";
-            Config.XPath = paths[4]?.Trim() ?? "";
-            Config.PixivPath = paths[5]?.Trim() ?? "";
-            Config.NHentaiPath = paths[6]?.Trim() ?? "";
-            Config.HitomiPath = paths[7]?.Trim() ?? "";
-            Config.FacebookPath = paths[8]?.Trim() ?? "";
+            Config.XPath = paths[3]?.Trim() ?? "";
+            Config.PixivPath = paths[4]?.Trim() ?? "";
+            Config.NHentaiPath = paths[5]?.Trim() ?? "";
+            Config.HitomiPath = paths[6]?.Trim() ?? "";
+            Config.FacebookPath = paths[7]?.Trim() ?? "";
 
             SaveConfig();
         }
@@ -133,13 +130,12 @@ namespace Koxmix.Core
             if (string.IsNullOrEmpty(url)) return paths[0];
             if (url.Contains("youtube.com") || url.Contains("youtu.be")) return paths[0];
             if (url.Contains("tiktok.com")) return paths[1];
-            if (url.Contains("bilibili.com")) return paths[2];
-            if (url.Contains("reddit.com") || url.Contains("redd.it")) return paths[3];
-            if (url.Contains("x.com") || url.Contains("twitter.com")) return paths[4];
-            if (url.Contains("pixiv.net")) return paths[5];
-            if (url.Contains("nhentai.net")) return paths[6];
-            if (url.Contains("hitomi.la")) return paths[7];
-            if (url.Contains("facebook.com") || url.Contains("fb.me") || url.Contains("fb.watch")) return paths[8];
+            if (url.Contains("bilibili.com") || url.Contains("bilibili.tv") || url.Contains("b23.tv")) return paths[2];
+            if (url.Contains("x.com") || url.Contains("twitter.com")) return paths[3];
+            if (url.Contains("pixiv.net") || url.Contains("pixiv.me")) return paths[4];
+            if (url.Contains("nhentai.net")) return paths[5];
+            if (url.Contains("hitomi.la")) return paths[6];
+            if (url.Contains("facebook.com") || url.Contains("fb.me") || url.Contains("fb.watch")) return paths[7];
 
             return paths[0];
         }

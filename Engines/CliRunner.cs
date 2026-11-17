@@ -55,12 +55,11 @@ namespace Koxmix.Engines
 
             string arguments =
                 $"{cookieArg}" +
-                $"--sleep-request 0.5-1.5 " +
                 $"-o \"http.headers.User-Agent={realUa}\" " +
                 $"-o \"http.headers.Accept-Language=en-US,en;q=0.9\" " +
-                $"-d {QuoteArgument(outputFolder)} " +
-                $"-o \"directory-format=\" " +
-                $"-o \"filename={{id}}_{{num}}.{{extension}}\" " +
+                $"--write-metadata " +
+                $"-D {QuoteArgument(outputFolder)} " +
+                $"-o \"filename={{num:>04}}_{{filename}}.{{extension}}\" " +
                 $"--no-mtime " +
                 $"{QuoteArgument(url)}";
 
@@ -88,7 +87,7 @@ namespace Koxmix.Engines
                 ? $"--cookies {QuoteArgument(cookieFile)} "
                 : $"--cookies-from-browser {PathManager.GetSelectedBrowser()} ";
 
-            string outputTemplate = Path.Combine(outputFolder, "%(title).80s [%(id)s].%(ext)s");
+            string outputTemplate = Path.Combine(outputFolder, "%(uploader_id,uploader,creator|Unknown).35s__KX__%(title,description|Media).75s__KX__%(id)s.%(ext)s");
             string arguments;
 
             if (extractMp3)

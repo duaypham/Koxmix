@@ -1,9 +1,11 @@
 ﻿using System;
 using System.IO;
 using System.IO.Compression;
+using System.Linq;
 using System.Text.RegularExpressions;
 using System.Threading;
 using Koxmix.Engines;
+using Newtonsoft.Json.Linq;
 
 namespace Koxmix.Utils
 {
@@ -32,8 +34,10 @@ namespace Koxmix.Utils
         {
             if (string.IsNullOrWhiteSpace(name)) return "Media_" + DateTime.Now.Ticks;
 
+            name = Regex.Replace(name, @"[\r\n\t]+", " ").Trim();
             string invalidChars = Regex.Escape(new string(Path.GetInvalidFileNameChars()));
             string clean = Regex.Replace(name, "[" + invalidChars + "]", "_");
+            clean = Regex.Replace(clean, @"\s{2,}", " ");
 
             if (clean.Length > maxLength) clean = clean.Substring(0, maxLength);
 
@@ -51,6 +55,158 @@ namespace Koxmix.Utils
             }
 
             return string.IsNullOrWhiteSpace(clean) ? "Media_" + DateTime.Now.Ticks : clean;
+        }
+
+        /// <summary>
+        /// Builds the unified format: [Platform] Uploader - Title [ID] + optional extension
+        /// </summary>
+        public static string BuildStandardName(string platform, string uploader, string title, string id, string extension = "")
+        {
+            string cleanUploader = (uploader ?? "").Trim();
+            if (string.IsNullOrWhiteSpace(cleanUploader) ||
+                cleanUploader.Equals("NA", StringComparison.OrdinalIgnoreCase) ||
+                cleanUploader.Equals("N/A", StringComparison.OrdinalIgnoreCase))
+            {
+                cleanUploader = "Unknown";
+            }
+
+            string cleanTitle = (title ?? "").Trim();
+            cleanTitle = Regex.Replace(cleanTitle, @"[\r\n\t]+", " ");
+
+            // Xóa phần thống kê "828K views · 5.1K reactions | " của Facebook
+            cleanTitle = Regex.Replace(cleanTitle, @"^[\d\.,KMBTkmbt]+\s*views\s*·\s*[\d\.,KMBTkmbt]+\s*reactions\s*[\|_－\-]\s*", "", RegexOptions.IgnoreCase).Trim();
+
+            // Nếu tiêu đề truyện có dạng "[Artist] Title" và chưa có uploader thì tách Artist ra
+            var leadingBracket = Regex.Match(cleanTitle, @"^\[([^\]]+)\]\s*(.+)$");
+            if (leadingBracket.Success)
+            {
+                string bracketContent = leadingBracket.Groups[1].Value.Trim();
+                string remainder = leadingBracket.Groups[2].Value.Trim();
+                if (cleanUploader == "Unknown" && !string.IsNullOrEmpty(bracketContent))
+                {
+                    cleanUploader = bracketContent;
+                }
+                if (!string.IsNullOrEmpty(remainder))
+                {
+                    cleanTitle = remainder;
+                }
+            }
+
+            // Xóa tên người đăng bị lặp ở cuối tiêu đề Facebook (ví dụ: "... | Native Ty Food")
+            if (!string.IsNullOrEmpty(cleanUploader) && cleanUploader != "Unknown")
+            {
+                string trailingAuthorPattern = @"\s*[\|_]\s*" + Regex.Escape(cleanUploader) + @"$";
+                cleanTitle = Regex.Replace(cleanTitle, trailingAuthorPattern, "", RegexOptions.IgnoreCase).Trim();
+            }
+
+            if (string.IsNullOrWhiteSpace(cleanTitle) ||
+                cleanTitle.Equals("NA", StringComparison.OrdinalIgnoreCase))
+            {
+                cleanTitle = "Media";
+            }
+
+            string safeUploader = SanitizeFileName(cleanUploader, 35);
+            string safeTitle = SanitizeFileName(cleanTitle, 75);
+            string safeId = SanitizeFileName(id ?? "0", 35);
+
+            string result = $"[{platform}] {safeUploader} - {safeTitle} [{safeId}]";
+            if (!string.IsNullOrEmpty(extension))
+            {
+                if (!extension.StartsWith(".")) extension = "." + extension;
+                result += extension;
+            }
+            return result;
+        }
+
+        /// <summary>
+        /// Cleans up a file created by yt-dlp so its filename strictly follows [Platform] Uploader - Title [ID].ext
+        /// </summary>
+        public static string NormalizeYtDlpFile(string filePath, string platform, string fallbackId)
+        {
+            if (string.IsNullOrEmpty(filePath) || !File.Exists(filePath)) return filePath;
+
+            try
+            {
+                string dir = Path.GetDirectoryName(filePath);
+                string ext = Path.GetExtension(filePath);
+                string nameNoExt = Path.GetFileNameWithoutExtension(filePath);
+
+                string[] parts = nameNoExt.Split(new[] { "__KX__" }, StringSplitOptions.None); if (parts.Length >= 3)
+                {
+                    string uploader = parts[0].Trim();
+                    string title = parts[1].Trim();
+                    string id = !string.IsNullOrWhiteSpace(parts[2]) ? parts[2].Trim() : fallbackId;
+
+                    string newFileName = BuildStandardName(platform, uploader, title, id, ext);
+                    string newPath = Path.Combine(dir, newFileName);
+
+                    if (!string.Equals(filePath, newPath, StringComparison.OrdinalIgnoreCase))
+                    {
+                        if (File.Exists(newPath)) TryDeleteFile(newPath);
+                        File.Move(filePath, newPath);
+                    }
+                    return newPath;
+                }
+            }
+            catch { }
+
+            return filePath;
+        }
+
+        /// <summary>
+        /// Reads metadata from gallery-dl's --write-metadata JSON files and deletes the JSON files afterwards.
+        /// </summary>
+        public static (string Uploader, string Title) ExtractAndCleanupGalleryDlMetadata(string folderPath)
+        {
+            string uploader = null;
+            string title = null;
+
+            if (string.IsNullOrEmpty(folderPath) || !Directory.Exists(folderPath))
+                return (null, null);
+
+            try
+            {
+                var jsonFiles = Directory.GetFiles(folderPath, "*.json", SearchOption.AllDirectories);
+                foreach (string jf in jsonFiles)
+                {
+                    if (uploader == null || title == null)
+                    {
+                        try
+                        {
+                            string raw = File.ReadAllText(jf);
+                            JObject obj = JObject.Parse(raw);
+
+                            if (string.IsNullOrEmpty(uploader))
+                            {
+                                if (obj["artist"] is JArray artArr && artArr.Count > 0)
+                                    uploader = string.Join(", ", artArr.Select(a => a.ToString()).Where(s => !string.IsNullOrWhiteSpace(s)).Take(2));
+                                else if (obj["group"] is JArray grpArr && grpArr.Count > 0)
+                                    uploader = string.Join(", ", grpArr.Select(g => g.ToString()).Where(s => !string.IsNullOrWhiteSpace(s)).Take(2));
+                                else if (obj["author"] is JObject authObj)
+                                    uploader = authObj["name"]?.ToString() ?? authObj["nick"]?.ToString();
+                                else if (obj["user"] is JObject userObj)
+                                    uploader = userObj["name"]?.ToString() ?? userObj["nick"]?.ToString();
+                                else
+                                    uploader = obj["uploader"]?.ToString() ?? obj["username"]?.ToString() ?? obj["author"]?.ToString() ?? obj["user"]?.ToString();
+                            }
+
+                            if (string.IsNullOrEmpty(title))
+                            {
+                                if (obj["title"] is JObject titleObj)
+                                    title = titleObj["english"]?.ToString() ?? titleObj["japanese"]?.ToString() ?? titleObj["pretty"]?.ToString();
+                                else
+                                    title = obj["title"]?.ToString() ?? obj["title_en"]?.ToString() ?? obj["content"]?.ToString() ?? obj["description"]?.ToString();
+                            }
+                        }
+                        catch { }
+                    }
+
+                    TryDeleteFile(jf);
+                }
+            }
+            catch { }
+
+            return (uploader, title);
         }
 
         public static void EnsureDiskSpace(string targetPath, long requiredBytes = 1073741824L)

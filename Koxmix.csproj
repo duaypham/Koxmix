@@ -15,7 +15,9 @@
 	</ItemGroup>
 	<ItemGroup>
 		<None Remove="gallery-dl.exe" />
-		<EmbeddedResource Include="gallery-dl.exe" />
+		<EmbeddedResource Include="gallery-dl.exe">
+		  <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+		</EmbeddedResource>
 	</ItemGroup>
 	<ItemGroup>
 		<PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4314.35" />

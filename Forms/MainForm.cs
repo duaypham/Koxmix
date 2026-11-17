@@ -163,7 +163,7 @@ namespace Koxmix.Forms
                 BindCardEvents(card);
                 _pnlCards.Controls.Add(card);
 
-                bool isGallery = title.StartsWith("[nHentai]") || title.StartsWith("[Hitomi]") || title.StartsWith("[FB]");
+                bool isGallery = title.StartsWith("[nHentai]") || title.StartsWith("[Hitomi]") || title.StartsWith("[Facebook]") || title.StartsWith("[Pixiv]");
                 if (isGallery && Directory.Exists(targetPath))
                 {
                     _ = Task.Run(async () =>
@@ -199,8 +199,6 @@ namespace Koxmix.Forms
                 url.Contains("hitomi.la") ||
                 url.Contains("x.com") ||
                 url.Contains("twitter.com") ||
-                url.Contains("reddit.com") ||
-                url.Contains("redd.it") ||
                 UrlUtils.IsFacebookAlbumOrPost(url))
             {
                 return false;
@@ -421,8 +419,7 @@ namespace Koxmix.Forms
                             card.Tag = path;
                             card.TargetPath = path;
 
-                            bool isGallery = name.StartsWith("[nHentai]") || name.StartsWith("[Hitomi]") || name.StartsWith("[FB]");
-
+                            bool isGallery = name.StartsWith("[nHentai]") || name.StartsWith("[Hitomi]") || name.StartsWith("[Facebook]") || name.StartsWith("[Pixiv]");
                             if (isGallery && Directory.Exists(path))
                             {
                                 _ = Task.Run(async () =>
@@ -743,7 +740,7 @@ namespace Koxmix.Forms
             }
 
             _pnlCards.Controls.SetChildIndex(_selectedCard, 0);
-            StartDownloadForCard(_selectedCard, url, forceRedownload: false);
+            StartDownloadForCard(_selectedCard, url, forceRedownload: true);
         }
 
         private void MenuRemoveFromList_Click(object sender, EventArgs e)

@@ -312,9 +312,8 @@ namespace Koxmix.Controls
                 else if (url.Contains("facebook.com") || url.Contains("fb.me") || url.Contains("fb.watch")) prefix = "facebook";
                 else if (url.Contains("x.com") || url.Contains("twitter.com")) prefix = "x";
                 else if (url.Contains("pixiv.net")) prefix = "pixiv";
-                else if (url.Contains("bilibili.com")) prefix = "bilibili";
+                else if (url.Contains("bilibili.com") || url.Contains("bilibili.tv") || url.Contains("b23.tv")) prefix = "bilibili";
                 else if (url.Contains("tiktok.com") || url.Contains("vt.tiktok.com")) prefix = "tiktok";
-                else if (url.Contains("reddit.com") || url.Contains("redd.it")) prefix = "reddit";
                 else if (url.Contains("nhentai.net")) prefix = "nhentai";
                 else if (url.Contains("hitomi.la")) prefix = "hitomi";
             }

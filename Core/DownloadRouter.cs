@@ -19,21 +19,21 @@ namespace Koxmix.Core
         public DownloadRouter()
         {
             _downloaders = new List<IDownloader>
-            {
-                new FacebookDownloader(),
-                new XDownloader(),
-                new RedditDownloader(),
-                new PixivDownloader(),
-                new NHentaiDownloader(),
-                new HitomiDownloader(),
-                new YtDlpDownloader()
-            };
+         {
+             new FacebookDownloader(),
+             new XDownloader(),
+             new PixivDownloader(),
+             new NHentaiDownloader(),
+             new HitomiDownloader(),
+             new YtDlpDownloader()
+         };
         }
 
         public async Task ProcessDownloadAsync(DownloadContext ctx)
         {
             ctx.OnStatusChanged?.Invoke("Normalizing URL...");
             ctx.Url = await UrlUtils.NormalizeUrlAsync(ctx.Url);
+            ctx.TargetFolder = PathManager.GetTargetPathForUrl(ctx.Url, ctx.IsMp3);
 
             string activeTargetFolder = ctx.TargetFolder;
 

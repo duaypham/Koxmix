@@ -1,37 +1,62 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Net.Http;
+using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using Koxmix.Core;
 using Koxmix.Engines;
 using Koxmix.Models;
 using Koxmix.Utils;
+using Newtonsoft.Json.Linq;
 
 namespace Koxmix.Downloaders
 {
     public class HitomiDownloader : IDownloader
     {
         private readonly CliRunner _cliRunner = new CliRunner();
+        private static readonly HttpClient _metaClient = CreateMetaClient();
+
+        private static HttpClient CreateMetaClient()
+        {
+            var client = new HttpClient { Timeout = TimeSpan.FromSeconds(12) };
+            client.DefaultRequestHeaders.TryAddWithoutValidation("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36");
+            client.DefaultRequestHeaders.TryAddWithoutValidation("Referer", "https://hitomi.la/");
+            return client;
+        }
 
         public bool CanHandle(string url) => !string.IsNullOrEmpty(url) && url.Contains("hitomi.la");
+
+        private static string FixHitomiUrl(string url, out string extractId)
+        {
+            if (url.Contains("/lofi/")) url = url.Replace("/lofi/", "/");
+            int qIdx = url.IndexOf('?');
+            if (qIdx > 0) url = url.Substring(0, qIdx);
+            int hashIdx = url.IndexOf('#');
+            if (hashIdx > 0) url = url.Substring(0, hashIdx);
+
+            extractId = Regex.Match(url, @"(\d{5,})(?:\.html|/|$)").Groups[1].Value;
+            if (string.IsNullOrEmpty(extractId))
+            {
+                extractId = Regex.Match(url, @"(\d+)").Groups[1].Value;
+            }
+
+            return !string.IsNullOrEmpty(extractId)
+                ? $"https://hitomi.la/galleries/{extractId}.html"
+                : url;
+        }
 
         public async Task DownloadAsync(DownloadContext ctx)
         {
             string targetFolder = ctx.TargetFolder;
-            string extractId = Regex.Match(ctx.Url, @"(?:galleries/|cg/|manga/|doujinshi/)[^/]*?(\d+)(?:\.html|/|$)").Groups[1].Value;
+            string cleanUrl = FixHitomiUrl(ctx.Url, out string extractId);
             if (string.IsNullOrEmpty(extractId))
                 throw new ArgumentException("Could not find Hitomi ID in the URL.");
 
             Directory.CreateDirectory(targetFolder);
-            var existingZips = new DirectoryInfo(targetFolder).GetFiles($"*[Hitomi_{extractId}]*.zip").ToList();
-            var existingDirs = new DirectoryInfo(targetFolder).GetDirectories($"*[Hitomi_{extractId}]*").ToList();
-
-            if (existingDirs.Count > 0)
-            {
-                foreach (var d in existingDirs) { try { d.Delete(true); } catch { } }
-            }
+            var existingZips = new DirectoryInfo(targetFolder).GetFiles($"*[{extractId}]*.zip").ToList();
 
             if (existingZips.Count > 0)
             {
@@ -48,85 +73,164 @@ namespace Koxmix.Downloaders
             }
 
             ctx.OnStatusChanged?.Invoke("Fetching Hitomi metadata...");
-            string title = "Comic";
-            try
+            string title = null;
+            string artist = null;
+            string infoSummary = null;
+            int totalExpectedPages = 0;
+
+            string[] jsDomains = { "https://ltn.gold-usergeneratedcontent.net", "https://ltn.hitomi.la" };
+            foreach (string domain in jsDomains)
             {
-                using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(10) };
-                client.DefaultRequestHeaders.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36");
-                client.DefaultRequestHeaders.Add("Referer", "https://hitomi.la/");
-
-                string jsData = await client.GetStringAsync($"https://ltn.hitomi.la/galleries/{extractId}.js", ctx.Token);
-                var titleMatch = Regex.Match(jsData, @"\""title\""\s*:\s*\""(.*?)\""");
-                if (titleMatch.Success)
+                try
                 {
-                    title = Regex.Unescape(titleMatch.Groups[1].Value);
-                }
-            }
-            catch { }
-
-            string safeTitle = FormatUtils.SanitizeFileName(title, 120);
-            string folderName = $"[Hitomi_{extractId}] {safeTitle}";
-            string finalPath = Path.Combine(targetFolder, folderName);
-            Directory.CreateDirectory(finalPath);
-
-            ctx.OnStatusChanged?.Invoke("Downloading pages via gallery-dl...");
-            bool isDownloading = true;
-
-            _ = Task.Run(async () =>
-            {
-                int lastCount = 0;
-                while (isDownloading && !ctx.Token.IsCancellationRequested)
-                {
-                    await Task.Delay(1000);
-                    if (Directory.Exists(finalPath))
+                    string jsData = await _metaClient.GetStringAsync($"{domain}/galleries/{extractId}.js", ctx.Token);
+                    int eqIdx = jsData.IndexOf('=');
+                    if (eqIdx >= 0)
                     {
-                        try
+                        string jsonPart = jsData.Substring(eqIdx + 1).Trim().TrimEnd(';');
+                        JObject galObj = JObject.Parse(jsonPart);
+
+                        title = galObj["title"]?.ToString();
+                        string language = galObj["language_localname"]?.ToString() ?? galObj["language"]?.ToString() ?? "N/A";
+                        string galType = galObj["type"]?.ToString() ?? "manga";
+
+                        if (galObj["files"] is JArray filesArr)
                         {
-                            int currentCount = Directory.GetFiles(finalPath, "*.*", SearchOption.TopDirectoryOnly).Length;
-                            if (currentCount > lastCount)
-                            {
-                                ctx.OnStatusChanged?.Invoke($"Downloading: {currentCount} pages...");
-                                lastCount = currentCount;
-                            }
+                            totalExpectedPages = filesArr.Count;
                         }
-                        catch { }
+
+                        var artists = galObj["artists"] is JArray artArr
+                            ? artArr.Select(a => a["artist"]?.ToString()).Where(s => !string.IsNullOrEmpty(s)).ToList()
+                            : new List<string>();
+
+                        var groups = galObj["groups"] is JArray grpArr
+                            ? grpArr.Select(g => g["group"]?.ToString()).Where(s => !string.IsNullOrEmpty(s)).ToList()
+                            : new List<string>();
+
+                        artist = artists.Count > 0
+                            ? string.Join(", ", artists.Take(2))
+                            : (groups.Count > 0 ? string.Join(", ", groups.Take(2)) : null);
+
+                        var sbInfo = new StringBuilder();
+                        sbInfo.AppendLine($"Gallery ID: {extractId}");
+                        sbInfo.AppendLine($"Title: {title}");
+                        sbInfo.AppendLine($"Artist: {(artists.Count > 0 ? string.Join(", ", artists) : "N/A")}");
+                        sbInfo.AppendLine($"Group: {(groups.Count > 0 ? string.Join(", ", groups) : "N/A")}");
+                        sbInfo.AppendLine($"Type: {galType}");
+                        sbInfo.AppendLine($"Language: {language}");
+                        infoSummary = sbInfo.ToString();
+                        break;
                     }
                 }
-            });
+                catch { }
+            }
+
+            string tempPath = Path.Combine(targetFolder, $"Temp_Hitomi_{extractId}_{Guid.NewGuid():N}");
+            Directory.CreateDirectory(tempPath);
 
             try
             {
-                await _cliRunner.DownloadGalleryAsync(ctx.Url, finalPath, ctx.Token, useCookies: true);
-            }
-            catch when (!ctx.Token.IsCancellationRequested)
-            {
-                ctx.OnStatusChanged?.Invoke("Trying guest mode...");
-                await _cliRunner.DownloadGalleryAsync(ctx.Url, finalPath, ctx.Token, useCookies: false);
+                ctx.OnStatusChanged?.Invoke("Downloading pages via gallery-dl...");
+                bool isDownloading = true;
+
+                _ = Task.Run(async () =>
+                {
+                    int lastCount = 0;
+                    while (isDownloading && !ctx.Token.IsCancellationRequested)
+                    {
+                        await Task.Delay(800);
+                        if (Directory.Exists(tempPath))
+                        {
+                            try
+                            {
+                                int currentCount = Directory.GetFiles(tempPath, "*.*", SearchOption.AllDirectories)
+                                    .Count(f => !f.EndsWith(".part", StringComparison.OrdinalIgnoreCase) &&
+                                                !f.EndsWith(".tmp", StringComparison.OrdinalIgnoreCase) &&
+                                                !f.EndsWith(".json", StringComparison.OrdinalIgnoreCase));
+
+                                if (currentCount > lastCount)
+                                {
+                                    lastCount = currentCount;
+                                    if (totalExpectedPages > 0)
+                                    {
+                                        ctx.OnStatusChanged?.Invoke($"Downloading: {currentCount}/{totalExpectedPages} pages...");
+                                        ctx.OnProgressChanged?.Invoke($"{Math.Min(99, Math.Round((double)currentCount / totalExpectedPages * 100))}%", null);
+                                    }
+                                    else
+                                    {
+                                        ctx.OnStatusChanged?.Invoke($"Downloading: {currentCount} pages...");
+                                    }
+                                }
+                            }
+                            catch { }
+                        }
+                    }
+                });
+
+                try
+                {
+                    await _cliRunner.DownloadGalleryAsync(cleanUrl, tempPath, ctx.Token, useCookies: true);
+                }
+                catch when (!ctx.Token.IsCancellationRequested)
+                {
+                    ctx.OnStatusChanged?.Invoke("Trying guest mode...");
+                    await _cliRunner.DownloadGalleryAsync(cleanUrl, tempPath, ctx.Token, useCookies: false);
+                }
+                finally
+                {
+                    isDownloading = false;
+                }
+
+                ctx.Token.ThrowIfCancellationRequested();
+
+                var (metaArtist, metaTitle) = FormatUtils.ExtractAndCleanupGalleryDlMetadata(tempPath);
+                if (string.IsNullOrWhiteSpace(artist)) artist = metaArtist;
+                if (string.IsNullOrWhiteSpace(title)) title = metaTitle;
+
+                var downloadedFiles = new DirectoryInfo(tempPath).GetFiles("*.*", SearchOption.AllDirectories)
+                    .Where(f => !f.Extension.Equals(".json", StringComparison.OrdinalIgnoreCase) &&
+                                !f.Extension.Equals(".part", StringComparison.OrdinalIgnoreCase))
+                    .OrderBy(f => f.Name)
+                    .ToArray();
+
+                if (downloadedFiles.Length == 0)
+                {
+                    throw new Exception("No images could be downloaded. Hitomi may have changed its algorithm; please restart the application to auto-update gallery-dl.");
+                }
+
+                string folderName = FormatUtils.BuildStandardName("Hitomi", artist, title ?? $"Gallery {extractId}", extractId);
+                string finalPath = Path.Combine(targetFolder, folderName);
+                Directory.CreateDirectory(finalPath);
+
+                int pageIdx = 1;
+                foreach (var file in downloadedFiles)
+                {
+                    try
+                    {
+                        string cleanPageName = $"{pageIdx++:D4}{file.Extension}";
+                        string newPagePath = Path.Combine(finalPath, cleanPageName);
+                        if (File.Exists(newPagePath)) FormatUtils.TryDeleteFile(newPagePath);
+                        file.MoveTo(newPagePath);
+                    }
+                    catch { }
+                }
+
+                if (!string.IsNullOrEmpty(infoSummary))
+                {
+                    try { File.WriteAllText(Path.Combine(finalPath, "info.txt"), infoSummary, Encoding.UTF8); } catch { }
+                }
+
+                ctx.OnStatusChanged?.Invoke("Packaging manga into .zip...");
+                string zipPath = await Task.Run(() => FormatUtils.PackFolderToZip(finalPath, deleteSourceFolder: true), ctx.Token);
+                long totalBytes = File.Exists(zipPath) ? new FileInfo(zipPath).Length : downloadedFiles.Sum(f => f.Length);
+
+                ctx.OnStatusChanged?.Invoke("Completed");
+                ctx.OnSuccess?.Invoke(folderName, FormatUtils.FormatFileSize(totalBytes), zipPath);
             }
             finally
             {
-                isDownloading = false;
+                try { if (Directory.Exists(tempPath)) Directory.Delete(tempPath, true); } catch { }
             }
-
-            if (ctx.Token.IsCancellationRequested)
-            {
-                try { if (Directory.Exists(finalPath)) Directory.Delete(finalPath, true); } catch { }
-                ctx.Token.ThrowIfCancellationRequested();
-            }
-
-            var downloadedFiles = new DirectoryInfo(finalPath).GetFiles("*.*", SearchOption.TopDirectoryOnly);
-            if (downloadedFiles.Length == 0)
-            {
-                try { Directory.Delete(finalPath, true); } catch { }
-                throw new Exception("No images could be downloaded. Hitomi may have changed its algorithm; please restart the application to auto-update gallery-dl.");
-            }
-
-            ctx.OnStatusChanged?.Invoke("Packaging manga into .zip...");
-            string zipPath = await Task.Run(() => FormatUtils.PackFolderToZip(finalPath, deleteSourceFolder: true), ctx.Token);
-            long totalBytes = File.Exists(zipPath) ? new FileInfo(zipPath).Length : downloadedFiles.Sum(f => f.Length);
-
-            ctx.OnStatusChanged?.Invoke("Completed");
-            ctx.OnSuccess?.Invoke(folderName, FormatUtils.FormatFileSize(totalBytes), zipPath);
         }
     }
 }

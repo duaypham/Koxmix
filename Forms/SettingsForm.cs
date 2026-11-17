@@ -7,7 +7,7 @@ namespace Koxmix.Forms
 {
     public partial class SettingsForm : Form
     {
-        private string[] _paths = new string[10];
+        private string[] _paths = new string[8];
 
         public SettingsForm()
         {

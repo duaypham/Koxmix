@@ -27,8 +27,9 @@ namespace Koxmix.Downloaders
             ctx.OnStatusChanged?.Invoke(ctx.IsMp3 ? "Processing X Audio..." : "Fetching X media...");
             Directory.CreateDirectory(targetFolder);
 
-            string tweetIdMatch = Regex.Match(ctx.Url, @"status(?:es)?/(\d+)").Groups[1].Value;
-            string usernameMatch = Regex.Match(ctx.Url, @"(?:x\.com|twitter\.com)/([^/]+)").Groups[1].Value;
+            bool isSpace = ctx.Url.Contains("/spaces/");
+            string tweetIdMatch = Regex.Match(ctx.Url, @"(?:status(?:es)?|spaces)/([0-9a-zA-Z]+)").Groups[1].Value;
+            string usernameMatch = Regex.Match(ctx.Url, @"(?:x\.com|twitter\.com)/([^/?#]+)").Groups[1].Value;
             if (usernameMatch.Equals("i", StringComparison.OrdinalIgnoreCase) ||
                 usernameMatch.Equals("explore", StringComparison.OrdinalIgnoreCase))
             {
@@ -37,21 +38,28 @@ namespace Koxmix.Downloaders
 
             if (!string.IsNullOrEmpty(tweetIdMatch))
             {
-                var existingFiles = new DirectoryInfo(targetFolder).GetFiles($"*{tweetIdMatch}*.*", SearchOption.TopDirectoryOnly).ToList();
-                if (existingFiles.Count > 0)
+                var allMatchedFiles = new DirectoryInfo(targetFolder).GetFiles($"*[{tweetIdMatch}]*.*", SearchOption.TopDirectoryOnly)
+                    .Where(f => !f.Name.EndsWith(".part", StringComparison.OrdinalIgnoreCase) &&
+                                !f.Name.EndsWith(".tmp", StringComparison.OrdinalIgnoreCase))
+                    .ToList();
+
+                FileInfo existingFile = ctx.IsMp3
+                    ? allMatchedFiles.FirstOrDefault(f => f.Extension.Equals(".mp3", StringComparison.OrdinalIgnoreCase) || f.Extension.Equals(".m4a", StringComparison.OrdinalIgnoreCase))
+                    : allMatchedFiles.FirstOrDefault(f => !f.Extension.Equals(".mp3", StringComparison.OrdinalIgnoreCase) && !f.Extension.Equals(".m4a", StringComparison.OrdinalIgnoreCase));
+
+                if (existingFile != null)
                 {
                     if (ctx.ForceRedownload)
                     {
-                        foreach (var f in existingFiles) FormatUtils.TryDeleteFile(f.FullName);
+                        FormatUtils.TryDeleteFile(existingFile.FullName);
                     }
                     else
                     {
                         ctx.OnStatusChanged?.Invoke("Completed (Exists)");
-                        var latest = existingFiles.OrderByDescending(f => f.LastWriteTime).First();
-                        string displayTitle = latest.Extension.Equals(".zip", StringComparison.OrdinalIgnoreCase)
-                            ? (!string.IsNullOrEmpty(usernameMatch) ? $"[X.com] @{usernameMatch} - Tweet {tweetIdMatch}" : Path.GetFileNameWithoutExtension(latest.Name))
-                            : latest.Name;
-                        ctx.OnSuccess?.Invoke(displayTitle, FormatUtils.FormatFileSize(latest.Length), latest.FullName);
+                        string cardTitle = existingFile.Extension.Equals(".zip", StringComparison.OrdinalIgnoreCase)
+                            ? Path.GetFileNameWithoutExtension(existingFile.Name)
+                            : existingFile.Name;
+                        ctx.OnSuccess?.Invoke(cardTitle, FormatUtils.FormatFileSize(existingFile.Length), existingFile.FullName);
                         return;
                     }
                 }
@@ -71,13 +79,13 @@ namespace Koxmix.Downloaders
                 string finalStatus = "Completed";
                 bool fallbackToMedia = false;
 
-                if (ctx.IsMp3)
+                if (ctx.IsMp3 || isSpace)
                 {
                     try
                     {
-                        await _cliRunner.DownloadMediaViaYtDlpCliAsync(ctx.Url, tempFolder, extractMp3: true, ctx.Token, progress);
+                        await _cliRunner.DownloadMediaViaYtDlpCliAsync(ctx.Url, tempFolder, extractMp3: ctx.IsMp3, ctx.Token, progress);
                     }
-                    catch (Exception ex) when (!ctx.Token.IsCancellationRequested)
+                    catch (Exception ex) when (!ctx.Token.IsCancellationRequested && !isSpace)
                     {
                         if (!ex.Message.Contains("unable to obtain file audio codec") &&
                             !ex.Message.Contains("Audio extraction failed") &&
@@ -93,25 +101,69 @@ namespace Koxmix.Downloaders
                                 FormatUtils.TryDeleteFile(s.FullName);
                         }
                         catch { }
-
-                        targetFolder = ctx.TargetFolder;
-                        Directory.CreateDirectory(targetFolder);
                     }
                 }
 
-                if (!ctx.IsMp3 || fallbackToMedia)
+                string metaUploader = null;
+                string metaTitle = null;
+
+                if ((!ctx.IsMp3 && !isSpace) || fallbackToMedia)
                 {
+                    bool needYtDlpFallback = false;
+                    bool isDownloadingGallery = true;
+
+                    _ = Task.Run(async () =>
+                    {
+                        int lastCount = 0;
+                        while (isDownloadingGallery && !ctx.Token.IsCancellationRequested)
+                        {
+                            await Task.Delay(700);
+                            if (Directory.Exists(tempFolder))
+                            {
+                                try
+                                {
+                                    int currentCount = Directory.GetFiles(tempFolder, "*.*", SearchOption.AllDirectories)
+                                        .Count(f => !f.EndsWith(".json", StringComparison.OrdinalIgnoreCase) &&
+                                                    !f.EndsWith(".part", StringComparison.OrdinalIgnoreCase) &&
+                                                    !f.EndsWith(".tmp", StringComparison.OrdinalIgnoreCase));
+                                    if (currentCount > lastCount)
+                                    {
+                                        ctx.OnStatusChanged?.Invoke($"Downloading: {currentCount} media files...");
+                                        lastCount = currentCount;
+                                    }
+                                }
+                                catch { }
+                            }
+                        }
+                    });
+
                     try
                     {
                         await _cliRunner.DownloadGalleryAsync(ctx.Url, tempFolder, ctx.Token);
+                        (metaUploader, metaTitle) = FormatUtils.ExtractAndCleanupGalleryDlMetadata(tempFolder);
+
+                        if (Directory.GetFiles(tempFolder, "*.*", SearchOption.AllDirectories).Length == 0)
+                        {
+                            needYtDlpFallback = true;
+                        }
                     }
                     catch when (!ctx.Token.IsCancellationRequested)
+                    {
+                        FormatUtils.ExtractAndCleanupGalleryDlMetadata(tempFolder);
+                        needYtDlpFallback = true;
+                    }
+                    finally
+                    {
+                        isDownloadingGallery = false;
+                    }
+
+                    if (needYtDlpFallback && !ctx.Token.IsCancellationRequested)
                     {
                         ctx.OnStatusChanged?.Invoke("Switching to Video/Gif Engine...");
                         try
                         {
                             await _cliRunner.DownloadMediaViaYtDlpCliAsync(ctx.Url, tempFolder, extractMp3: false, ctx.Token, progress);
-                            finalStatus = fallbackToMedia ? "Completed (Missing Images)" : "Completed";
+                            finalStatus = fallbackToMedia ? "Completed (Missing Audio)" : "Completed";
                         }
                         catch (Exception ex3) when (!ctx.Token.IsCancellationRequested)
                         {
@@ -121,28 +173,40 @@ namespace Koxmix.Downloaders
                 }
 
                 ctx.Token.ThrowIfCancellationRequested();
-                await Task.Delay(500, ctx.Token);
+                await Task.Delay(300, ctx.Token);
 
-                List<FileInfo> newFiles = new DirectoryInfo(tempFolder).GetFiles("*.*", SearchOption.AllDirectories).ToList();
-
-                if (!string.IsNullOrEmpty(tweetIdMatch))
-                {
-                    List<FileInfo> matchedFiles = newFiles.Where(f => f.Name.Contains(tweetIdMatch)).ToList();
-                    if (matchedFiles.Count > 0) newFiles = matchedFiles;
-                }
+                List<FileInfo> newFiles = new DirectoryInfo(tempFolder).GetFiles("*.*", SearchOption.AllDirectories)
+                    .Where(f => !f.Extension.Equals(".json", StringComparison.OrdinalIgnoreCase) &&
+                                !f.Extension.Equals(".part", StringComparison.OrdinalIgnoreCase))
+                    .ToList();
 
                 if (newFiles.Count == 0)
                 {
                     throw new Exception("Could not download media. The link might be a text-only post or you haven't refreshed the X.com login cookies.");
                 }
 
-                string prefixName = !string.IsNullOrEmpty(usernameMatch) ? $"X_{usernameMatch}" : "X_Media";
+                string firstNoExt = Path.GetFileNameWithoutExtension(newFiles[0].Name);
+                if (firstNoExt.Contains("__KX__"))
+                {
+                    string[] parts = firstNoExt.Split(new[] { "__KX__" }, StringSplitOptions.None);
+                    if (parts.Length >= 2)
+                    {
+                        if (string.IsNullOrEmpty(metaUploader)) metaUploader = parts[0].Trim();
+                        if (string.IsNullOrEmpty(metaTitle)) metaTitle = parts[1].Trim();
+                    }
+                }
+
+                string finalUser = !string.IsNullOrWhiteSpace(metaUploader) ? metaUploader : usernameMatch;
+                if (!string.IsNullOrWhiteSpace(finalUser) && !finalUser.StartsWith("@"))
+                    finalUser = "@" + finalUser;
+
+                string finalTitle = !string.IsNullOrWhiteSpace(metaTitle) ? metaTitle : "Tweet Media";
                 string idPart = !string.IsNullOrEmpty(tweetIdMatch) ? tweetIdMatch : DateTime.Now.ToString("yyyyMMdd_HHmmss");
 
                 if (newFiles.Count == 1)
                 {
                     FileInfo singleFile = newFiles[0];
-                    string cleanName = $"{prefixName}_{idPart}_1{singleFile.Extension}";
+                    string cleanName = FormatUtils.BuildStandardName("X.com", finalUser, finalTitle, idPart, singleFile.Extension);
                     string newPath = Path.Combine(targetFolder, cleanName);
                     if (File.Exists(newPath)) FormatUtils.TryDeleteFile(newPath);
                     singleFile.MoveTo(newPath);
@@ -153,8 +217,8 @@ namespace Koxmix.Downloaders
                     return;
                 }
 
-                string albumFolderName = FormatUtils.SanitizeFileName($"[X] {prefixName}_{idPart}", 100);
-                string albumFolder = Path.Combine(targetFolder, albumFolderName);
+                string albumBaseName = FormatUtils.BuildStandardName("X.com", finalUser, finalTitle, idPart);
+                string albumFolder = Path.Combine(targetFolder, albumBaseName);
                 Directory.CreateDirectory(albumFolder);
 
                 int noneCounter = 1;
@@ -162,7 +226,7 @@ namespace Koxmix.Downloaders
                 {
                     try
                     {
-                        string cleanName = $"{prefixName}_{idPart}_{noneCounter++:D2}{file.Extension}";
+                        string cleanName = $"{idPart}_{noneCounter++:D3}{file.Extension}";
                         string newPath = Path.Combine(albumFolder, cleanName);
                         if (File.Exists(newPath)) FormatUtils.TryDeleteFile(newPath);
                         file.MoveTo(newPath);
@@ -174,12 +238,8 @@ namespace Koxmix.Downloaders
                 string zipPath = await Task.Run(() => FormatUtils.PackFolderToZip(albumFolder, deleteSourceFolder: true), ctx.Token);
                 long zipSize = File.Exists(zipPath) ? new FileInfo(zipPath).Length : 0;
 
-                string xTitle = !string.IsNullOrEmpty(tweetIdMatch)
-                    ? $"[X.com] @{usernameMatch} - Tweet {tweetIdMatch}"
-                    : $"[X.com] @{usernameMatch} - {newFiles.Count} Media";
-
                 ctx.OnStatusChanged?.Invoke(finalStatus);
-                ctx.OnSuccess?.Invoke(xTitle, FormatUtils.FormatFileSize(zipSize), zipPath);
+                ctx.OnSuccess?.Invoke(albumBaseName, FormatUtils.FormatFileSize(zipSize), zipPath);
             }
             finally
             {

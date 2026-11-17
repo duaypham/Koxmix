@@ -25,16 +25,15 @@ namespace Koxmix.Downloaders
 
             if (!string.IsNullOrEmpty(extractId) && !System.Text.RegularExpressions.Regex.IsMatch(extractId, @"^\d{8}_\d{6}$"))
             {
-                var existingZips = new DirectoryInfo(targetFolder).GetFiles($"*{extractId}*.zip", SearchOption.TopDirectoryOnly).ToList();
-                var existingDirs = new DirectoryInfo(targetFolder).GetDirectories($"*{extractId}*", SearchOption.TopDirectoryOnly).ToList();
-                var existingFiles = new DirectoryInfo(targetFolder).GetFiles($"*{extractId}_*.*", SearchOption.AllDirectories).ToList();
+                var existingZips = new DirectoryInfo(targetFolder).GetFiles($"*[{extractId}]*.zip", SearchOption.TopDirectoryOnly).ToList();
+                var existingFiles = new DirectoryInfo(targetFolder).GetFiles($"*[{extractId}]*.*", SearchOption.TopDirectoryOnly)
+                    .Where(f => !f.Extension.Equals(".zip", StringComparison.OrdinalIgnoreCase)).ToList();
 
-                if (existingZips.Count > 0 || (existingDirs.Count > 0 && existingDirs[0].GetFiles().Length > 0) || existingFiles.Count > 0)
+                if (existingZips.Count > 0 || existingFiles.Count > 0)
                 {
                     if (ctx.ForceRedownload)
                     {
                         foreach (var z in existingZips) FormatUtils.TryDeleteFile(z.FullName);
-                        if (existingDirs.Count > 0) { try { existingDirs[0].Delete(true); } catch { } }
                         foreach (var f in existingFiles) FormatUtils.TryDeleteFile(f.FullName);
                     }
                     else
@@ -42,16 +41,12 @@ namespace Koxmix.Downloaders
                         ctx.OnStatusChanged?.Invoke("Completed (Exists)");
                         if (existingZips.Count > 0)
                         {
-                            ctx.OnSuccess?.Invoke($"[FB] {Path.GetFileNameWithoutExtension(existingZips[0].Name)}", FormatUtils.FormatFileSize(existingZips[0].Length), existingZips[0].FullName);
-                        }
-                        else if (existingDirs.Count > 0)
-                        {
-                            ctx.OnSuccess?.Invoke($"[FB] {existingDirs[0].Name}", $"{existingDirs[0].GetFiles().Length} Files", existingDirs[0].FullName);
+                            ctx.OnSuccess?.Invoke(Path.GetFileNameWithoutExtension(existingZips[0].Name), FormatUtils.FormatFileSize(existingZips[0].Length), existingZips[0].FullName);
                         }
                         else
                         {
                             var latest = existingFiles.OrderByDescending(f => f.LastWriteTime).First();
-                            ctx.OnSuccess?.Invoke(latest.Name, FormatUtils.FormatFileSize(existingFiles.Sum(f => f.Length)), latest.FullName);
+                            ctx.OnSuccess?.Invoke(latest.Name, FormatUtils.FormatFileSize(latest.Length), latest.FullName);
                         }
                         return;
                     }
@@ -70,12 +65,13 @@ namespace Koxmix.Downloaders
                     int lastCount = 0;
                     while (isDownloading && !ctx.Token.IsCancellationRequested)
                     {
-                        await Task.Delay(1000);
+                        await Task.Delay(800);
                         if (Directory.Exists(tempFolder))
                         {
                             try
                             {
-                                int currentCount = Directory.GetFiles(tempFolder, "*.*", SearchOption.AllDirectories).Length;
+                                int currentCount = Directory.GetFiles(tempFolder, "*.*", SearchOption.AllDirectories)
+                                    .Count(f => !f.EndsWith(".json", StringComparison.OrdinalIgnoreCase) && !f.EndsWith(".part", StringComparison.OrdinalIgnoreCase));
                                 if (currentCount > lastCount)
                                 {
                                     ctx.OnStatusChanged?.Invoke($"Downloading: {currentCount} photos...");
@@ -113,18 +109,26 @@ namespace Koxmix.Downloaders
 
                 ctx.Token.ThrowIfCancellationRequested();
 
+                var (metaUploader, metaTitle) = FormatUtils.ExtractAndCleanupGalleryDlMetadata(tempFolder);
+
                 List<FileInfo> newFiles = Directory.Exists(tempFolder)
-                    ? new DirectoryInfo(tempFolder).GetFiles("*.*", SearchOption.AllDirectories).ToList()
+                    ? new DirectoryInfo(tempFolder).GetFiles("*.*", SearchOption.AllDirectories)
+                        .Where(f => !f.Extension.Equals(".json", StringComparison.OrdinalIgnoreCase) && !f.Extension.Equals(".part", StringComparison.OrdinalIgnoreCase))
+                        .ToList()
                     : new List<FileInfo>();
 
                 if (!downloadSuccess || newFiles.Count == 0)
                 {
                     throw new Exception(originalError != null ? originalError.ToString() : "Gallery-dl output empty.");
                 }
+
+                string uploader = !string.IsNullOrWhiteSpace(metaUploader) ? metaUploader : "Facebook User";
+                string title = !string.IsNullOrWhiteSpace(metaTitle) ? metaTitle : "Photo Post";
+
                 if (newFiles.Count == 1)
                 {
                     FileInfo singleFile = newFiles[0];
-                    string singleName = $"FB_{extractId}_1{singleFile.Extension}";
+                    string singleName = FormatUtils.BuildStandardName("Facebook", uploader, title, extractId, singleFile.Extension);
                     string singlePath = Path.Combine(targetFolder, singleName);
                     if (File.Exists(singlePath)) FormatUtils.TryDeleteFile(singlePath);
                     singleFile.MoveTo(singlePath);
@@ -134,16 +138,10 @@ namespace Koxmix.Downloaders
                     ctx.OnSuccess?.Invoke(finalFi.Name, FormatUtils.FormatFileSize(finalFi.Length), finalFi.FullName);
                     return;
                 }
+
                 ctx.OnStatusChanged?.Invoke("Organizing files...");
-                string captionFolder = FormatUtils.SanitizeFileName(newFiles[0].Directory.Name, 80);
-
-                if (string.IsNullOrWhiteSpace(captionFolder) || captionFolder.StartsWith("Temp_FB", StringComparison.OrdinalIgnoreCase))
-                    captionFolder = $"FB_{extractId}";
-
-                if (!string.IsNullOrEmpty(extractId) && !captionFolder.Contains(extractId))
-                    captionFolder = $"[{extractId}] {captionFolder}";
-
-                string finalFolder = Path.Combine(targetFolder, captionFolder);
+                string albumBaseName = FormatUtils.BuildStandardName("Facebook", uploader, title, extractId);
+                string finalFolder = Path.Combine(targetFolder, albumBaseName);
                 Directory.CreateDirectory(finalFolder);
 
                 int imgIndex = 1;
@@ -164,7 +162,7 @@ namespace Koxmix.Downloaders
                 long zipSize = File.Exists(zipPath) ? new FileInfo(zipPath).Length : 0;
 
                 ctx.OnStatusChanged?.Invoke("Completed");
-                ctx.OnSuccess?.Invoke($"[FB] {captionFolder}", FormatUtils.FormatFileSize(zipSize), zipPath);
+                ctx.OnSuccess?.Invoke(albumBaseName, FormatUtils.FormatFileSize(zipSize), zipPath);
             }
             finally
             {

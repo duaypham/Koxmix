@@ -6,6 +6,7 @@ using System.Linq;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using Koxmix.Core;
+using Koxmix.Engines;
 using Koxmix.Models;
 using Koxmix.Utils;
 using YoutubeDLSharp;
@@ -15,21 +16,40 @@ namespace Koxmix.Downloaders
 {
     public class YtDlpDownloader : IDownloader
     {
+        private readonly CliRunner _cliRunner = new CliRunner();
+
         public bool CanHandle(string url) => !string.IsNullOrEmpty(url);
+
+        private static string GetPlatformLabel(string url)
+        {
+            if (string.IsNullOrEmpty(url)) return "Web";
+            if (url.Contains("youtube.com") || url.Contains("youtu.be")) return "YouTube";
+            if (url.Contains("tiktok.com")) return "TikTok";
+            if (url.Contains("bilibili.com") || url.Contains("bilibili.tv") || url.Contains("b23.tv")) return "Bilibili";
+            if (url.Contains("facebook.com") || url.Contains("fb.watch") || url.Contains("fb.me")) return "Facebook";
+            if (url.Contains("x.com") || url.Contains("twitter.com")) return "X.com";
+            return "Web";
+        }
+
         public async Task DownloadAsync(DownloadContext ctx)
         {
             string targetFolder = ctx.TargetFolder;
             bool isPlaylist = UrlUtils.IsPlaylist(ctx.Url);
+            string platform = GetPlatformLabel(ctx.Url);
             Directory.CreateDirectory(targetFolder);
 
             string videoId = UrlUtils.ExtractMediaId(ctx.Url);
             string playlistId = UrlUtils.ExtractPlaylistId(ctx.Url);
 
+            if (UrlUtils.IsBilibiliImagePost(ctx.Url))
+            {
+                await DownloadGalleryFallbackAsync(ctx, platform, videoId ?? DateTime.Now.ToString("yyyyMMdd_HHmmss"), targetFolder);
+                return;
+            }
+
             if (isPlaylist && !string.IsNullOrEmpty(playlistId))
             {
                 string plTag = ctx.IsMp3 ? $"[{playlistId}_MP3]" : $"[{playlistId}]";
-                string plPrefix = ctx.IsMp3 ? "[Playlist MP3]" : "[Playlist]";
-
                 var existingZip = new DirectoryInfo(targetFolder).GetFiles($"*{plTag}*.zip").FirstOrDefault();
                 var existingDir = new DirectoryInfo(targetFolder).GetDirectories($"*{plTag}*").FirstOrDefault();
 
@@ -43,10 +63,7 @@ namespace Koxmix.Downloaders
                     else
                     {
                         ctx.OnStatusChanged?.Invoke("Completed (Exists)");
-                        string rawZipName = Path.GetFileNameWithoutExtension(existingZip.Name);
-                        int idx = rawZipName.LastIndexOf(" [");
-                        string cleanPlName = idx > 0 ? rawZipName.Substring(0, idx) : rawZipName;
-                        ctx.OnSuccess?.Invoke($"{plPrefix} {cleanPlName}", FormatUtils.FormatFileSize(existingZip.Length), existingZip.FullName);
+                        ctx.OnSuccess?.Invoke(Path.GetFileNameWithoutExtension(existingZip.Name), FormatUtils.FormatFileSize(existingZip.Length), existingZip.FullName);
                         return;
                     }
                 }
@@ -64,12 +81,12 @@ namespace Koxmix.Downloaders
             }
             else if (!isPlaylist && !string.IsNullOrEmpty(videoId))
             {
-                var existingFiles = new DirectoryInfo(targetFolder).GetFiles($"*[{videoId}].*")
+                var existingFiles = new DirectoryInfo(targetFolder).GetFiles($"*[{videoId}]*.*")
                     .Where(f => !f.Name.EndsWith(".part") && !f.Name.EndsWith(".ytdl")).ToList();
 
                 FileInfo existingFile = ctx.IsMp3
                     ? existingFiles.FirstOrDefault(f => f.Extension.Equals(".mp3", StringComparison.OrdinalIgnoreCase) || f.Extension.Equals(".m4a", StringComparison.OrdinalIgnoreCase))
-                    : existingFiles.FirstOrDefault(f => f.Extension.Equals(".mp4", StringComparison.OrdinalIgnoreCase) || f.Extension.Equals(".webm", StringComparison.OrdinalIgnoreCase) || f.Extension.Equals(".mkv", StringComparison.OrdinalIgnoreCase));
+                    : existingFiles.FirstOrDefault(f => f.Extension.Equals(".mp4", StringComparison.OrdinalIgnoreCase) || f.Extension.Equals(".webm", StringComparison.OrdinalIgnoreCase) || f.Extension.Equals(".mkv", StringComparison.OrdinalIgnoreCase) || f.Extension.Equals(".zip", StringComparison.OrdinalIgnoreCase));
 
                 if (existingFile != null)
                 {
@@ -80,7 +97,10 @@ namespace Koxmix.Downloaders
                     else
                     {
                         ctx.OnStatusChanged?.Invoke("Completed (Exists)");
-                        ctx.OnSuccess?.Invoke(existingFile.Name, FormatUtils.FormatFileSize(existingFile.Length), existingFile.FullName);
+                        string displayExisting = existingFile.Extension.Equals(".zip", StringComparison.OrdinalIgnoreCase)
+                            ? Path.GetFileNameWithoutExtension(existingFile.Name)
+                            : existingFile.Name;
+                        ctx.OnSuccess?.Invoke(displayExisting, FormatUtils.FormatFileSize(existingFile.Length), existingFile.FullName);
                         return;
                     }
                 }
@@ -98,13 +118,19 @@ namespace Koxmix.Downloaders
                 OutputFolder = targetFolder
             };
 
-            string refererHeader = ctx.Url.Contains("bilibili.com")
+            string uaPath = Path.Combine(AppUtils.DataDir, "app_useragent.txt");
+            string realUa = File.Exists(uaPath)
+                ? File.ReadAllText(uaPath).Trim()
+                : "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36";
+
+            string refererHeader = (ctx.Url.Contains("bilibili.com") || ctx.Url.Contains("bilibili.tv"))
                 ? "https://www.bilibili.com/"
                 : (ctx.Url.Contains("x.com") ? "https://x.com/" : null);
 
             var options = new OptionSet
             {
-                IgnoreErrors = true,
+                IgnoreErrors = isPlaylist,
+                NoPlaylist = !isPlaylist,
                 EmbedChapters = true,
                 WindowsFilenames = true,
                 ConcurrentFragments = 4,
@@ -113,6 +139,7 @@ namespace Koxmix.Downloaders
             };
 
             options.AddCustomOption<bool>("--rm-cache-dir", true);
+            options.AddCustomOption<string>("--user-agent", realUa);
             if (!string.IsNullOrEmpty(refererHeader))
             {
                 options.AddCustomOption<string>("--add-header", $"Referer:{refererHeader}");
@@ -134,7 +161,7 @@ namespace Koxmix.Downloaders
                 options.ExtractAudio = true;
                 options.AudioFormat = AudioConversionFormat.Mp3;
                 options.EmbedThumbnail = true;
-                options.Format = "bestaudio/best";
+                options.Format = "bestaudio[format_note*=original]/bestaudio/best";
             }
             else
             {
@@ -145,23 +172,23 @@ namespace Koxmix.Downloaders
                 options.ConvertSubs = "srt";
 
                 options.MergeOutputFormat = DownloadMergeFormat.Mp4;
-                options.Format = ctx.Url.Contains("bilibili.com")
+                options.Format = (ctx.Url.Contains("bilibili.com") || ctx.Url.Contains("bilibili.tv"))
                     ? "bestvideo[vcodec^=avc1]+bestaudio[ext=m4a]/best[vcodec^=avc1]/bv*+ba/b"
-                    : "bestvideo+bestaudio/best";
+                    : "bestvideo+bestaudio[format_note*=original]/bestvideo+bestaudio/best";
             }
 
             if (isPlaylist)
             {
                 string plIdTemplate = ctx.IsMp3 ? "%(playlist_id,id)s_MP3" : "%(playlist_id,id)s";
-                options.Output = Path.Combine(targetFolder, $"%(playlist_title,series,title).70s [{plIdTemplate}]", "%(playlist_index,autonumber)02d - %(title).70s [%(id)s].%(ext)s");
-            }
-            else if (ctx.Url.Contains("tiktok.com"))
-            {
-                options.Output = Path.Combine(targetFolder, "TikTok_@%(uploader,creator)s_[%(id)s].%(ext)s");
+                string plPlatform = ctx.IsMp3 ? $"{platform} MP3" : $"{platform} Playlist";
+                options.Output = Path.Combine(
+                    targetFolder,
+                    $"[{plPlatform}] %(playlist_uploader,uploader,channel|Unknown).30s - %(playlist_title,series,title).55s [{plIdTemplate}]",
+                    $"%(playlist_index,autonumber)02d - %(title).65s [%(id)s].%(ext)s");
             }
             else
             {
-                options.Output = Path.Combine(targetFolder, "%(title).100s [%(id)s].%(ext)s");
+                options.Output = Path.Combine(targetFolder, "%(uploader,channel,creator,uploader_id|Unknown).35s__KX__%(title).75s__KX__%(id)s.%(ext)s");
             }
 
             RunResult<string[]> playlistRes = null;
@@ -211,8 +238,6 @@ namespace Koxmix.Downloaders
                 }
 
                 string rawFolderName = new DirectoryInfo(playlistFolder).Name;
-                int lastBracketIndex = rawFolderName.LastIndexOf(" [");
-                string playlistName = lastBracketIndex > 0 ? rawFolderName.Substring(0, lastBracketIndex) : rawFolderName;
 
                 if (!ctx.IsMp3 && Directory.Exists(playlistFolder))
                 {
@@ -238,9 +263,8 @@ namespace Koxmix.Downloaders
                     }
                 }
 
-                string plPrefixDone = ctx.IsMp3 ? "[Playlist MP3] " : "[Playlist] ";
                 ctx.OnStatusChanged?.Invoke("Completed");
-                ctx.OnSuccess?.Invoke(plPrefixDone + playlistName, sizeText, finalPlaylistOutput);
+                ctx.OnSuccess?.Invoke(rawFolderName, sizeText, finalPlaylistOutput);
                 return;
             }
 
@@ -259,34 +283,115 @@ namespace Koxmix.Downloaders
                 if (newCreated.Count <= 0)
                 {
                     string errorMsg = singleRes?.ErrorOutput != null ? string.Join("\n", singleRes.ErrorOutput) : "Unknown yt-dlp extraction error.";
+
+                    if (!ctx.IsMp3 && (errorMsg.Contains("extension ('html') is unusual") || errorMsg.Contains("Falling back on generic")))
+                    {
+                        await DownloadGalleryFallbackAsync(ctx, platform, videoId ?? DateTime.Now.ToString("yyyyMMdd_HHmmss"), targetFolder);
+                        return;
+                    }
+
                     throw new Exception(errorMsg);
                 }
                 finalPath = newCreated.OrderByDescending(f => f.LastWriteTime).First().FullName;
             }
+
+            string rawMediaPrefix = Path.GetFileNameWithoutExtension(finalPath);
+
+            finalPath = FormatUtils.NormalizeYtDlpFile(finalPath, platform, videoId);
 
             if (!ctx.IsMp3)
             {
                 ctx.OnStatusChanged?.Invoke("Embedding subtitles...");
                 string directoryName = Path.GetDirectoryName(finalPath);
                 string subDirSingle = Path.Combine(directoryName, "Subtitles");
-                await Task.Run(() => FilterAndEmbedSubtitlesForVideo(finalPath, subDirSingle, ffmpegExe), ctx.Token);
+                await Task.Run(() => FilterAndEmbedSubtitlesForVideo(finalPath, subDirSingle, ffmpegExe, rawMediaPrefix), ctx.Token);
             }
 
             ctx.OnStatusChanged?.Invoke("Completed");
             FileInfo fi = new FileInfo(finalPath);
-            ctx.OnSuccess?.Invoke(fi.Name, FormatUtils.FormatFileSize(fi.Length), finalPath);
+            ctx.OnSuccess?.Invoke(fi.Name, FormatUtils.FormatFileSize(fi.Length), fi.FullName);
         }
 
-        private static void FilterAndEmbedSubtitlesForVideo(string videoPath, string subDir, string ffmpegExe)
+        private async Task DownloadGalleryFallbackAsync(DownloadContext ctx, string platform, string mediaId, string targetFolder)
+        {
+            ctx.OnStatusChanged?.Invoke($"Fetching {platform} post via gallery-dl...");
+            string tempFolder = Path.Combine(targetFolder, $"Temp_{platform}_{DateTime.Now:HHmmss}_{Guid.NewGuid():N}");
+            Directory.CreateDirectory(tempFolder);
+
+            try
+            {
+                try
+                {
+                    await _cliRunner.DownloadGalleryAsync(ctx.Url, tempFolder, ctx.Token, useCookies: true);
+                }
+                catch when (!ctx.Token.IsCancellationRequested)
+                {
+                    await _cliRunner.DownloadGalleryAsync(ctx.Url, tempFolder, ctx.Token, useCookies: false);
+                }
+
+                ctx.Token.ThrowIfCancellationRequested();
+
+                var (metaUploader, metaTitle) = FormatUtils.ExtractAndCleanupGalleryDlMetadata(tempFolder);
+                var files = new DirectoryInfo(tempFolder).GetFiles("*.*", SearchOption.AllDirectories)
+                    .Where(f => !f.Extension.Equals(".json", StringComparison.OrdinalIgnoreCase) &&
+                                !f.Extension.Equals(".part", StringComparison.OrdinalIgnoreCase))
+                    .OrderBy(f => f.Name)
+                    .ToList();
+
+                if (files.Count == 0)
+                {
+                    throw new Exception($"Could not extract media from this {platform} link. Please verify the URL or refresh your {platform} Cookies.");
+                }
+
+                if (files.Count == 1)
+                {
+                    string singleName = FormatUtils.BuildStandardName(platform, metaUploader, metaTitle ?? "Post", mediaId, files[0].Extension);
+                    string singlePath = Path.Combine(targetFolder, singleName);
+                    if (File.Exists(singlePath)) FormatUtils.TryDeleteFile(singlePath);
+                    files[0].MoveTo(singlePath);
+
+                    var finalFi = new FileInfo(singlePath);
+                    ctx.OnStatusChanged?.Invoke("Completed");
+                    ctx.OnSuccess?.Invoke(finalFi.Name, FormatUtils.FormatFileSize(finalFi.Length), finalFi.FullName);
+                    return;
+                }
+
+                string albumBaseName = FormatUtils.BuildStandardName(platform, metaUploader, metaTitle ?? "Album", mediaId);
+                string albumFolder = Path.Combine(targetFolder, albumBaseName);
+                Directory.CreateDirectory(albumFolder);
+
+                int idx = 1;
+                foreach (var file in files)
+                {
+                    string newPath = Path.Combine(albumFolder, $"{idx++:D4}{file.Extension}");
+                    if (File.Exists(newPath)) FormatUtils.TryDeleteFile(newPath);
+                    file.MoveTo(newPath);
+                }
+
+                ctx.OnStatusChanged?.Invoke("Packaging album into .zip...");
+                string zipPath = await Task.Run(() => FormatUtils.PackFolderToZip(albumFolder, deleteSourceFolder: true), ctx.Token);
+                long zipBytes = File.Exists(zipPath) ? new FileInfo(zipPath).Length : 0;
+
+                ctx.OnStatusChanged?.Invoke("Completed");
+                ctx.OnSuccess?.Invoke(albumBaseName, FormatUtils.FormatFileSize(zipBytes), zipPath);
+            }
+            finally
+            {
+                try { if (Directory.Exists(tempFolder)) Directory.Delete(tempFolder, true); } catch { }
+            }
+        }
+
+        private static void FilterAndEmbedSubtitlesForVideo(string videoPath, string subDir, string ffmpegExe, string rawSearchPrefix = null)
         {
             try
             {
                 if (string.IsNullOrEmpty(videoPath) || !File.Exists(videoPath)) return;
 
                 string directoryName = Path.GetDirectoryName(videoPath);
-                string mediaName = Path.GetFileNameWithoutExtension(videoPath);
+                string cleanMediaName = Path.GetFileNameWithoutExtension(videoPath);
+                string searchPrefix = !string.IsNullOrEmpty(rawSearchPrefix) ? rawSearchPrefix : cleanMediaName;
 
-                var allSubFiles = new DirectoryInfo(directoryName).GetFiles(mediaName + ".*")
+                var allSubFiles = new DirectoryInfo(directoryName).GetFiles(searchPrefix + ".*")
                     .Where(f => IsSubtitleExtension(f.Extension) && f.Length > 0)
                     .ToList();
 
@@ -295,8 +400,8 @@ namespace Koxmix.Downloaders
                 var parsedSubs = allSubFiles.Select(f =>
                 {
                     string nameNoExt = Path.GetFileNameWithoutExtension(f.Name);
-                    string lang = nameNoExt.Length > mediaName.Length
-                        ? nameNoExt.Substring(mediaName.Length).TrimStart('.')
+                    string lang = nameNoExt.Length > searchPrefix.Length
+                        ? nameNoExt.Substring(searchPrefix.Length).TrimStart('.')
                         : "und";
                     return new { File = f, Lang = lang };
                 }).ToList();
@@ -393,11 +498,12 @@ namespace Koxmix.Downloaders
                 }
 
                 Directory.CreateDirectory(subDir);
-                foreach (var (subFile, _) in selectedSubs)
+                foreach (var (subFile, lang) in selectedSubs)
                 {
                     if (File.Exists(subFile.FullName))
                     {
-                        string newSubPath = Path.Combine(subDir, subFile.Name);
+                        string cleanSubName = $"{cleanMediaName}.{lang}{subFile.Extension}";
+                        string newSubPath = Path.Combine(subDir, cleanSubName);
                         if (File.Exists(newSubPath)) FormatUtils.TryDeleteFile(newSubPath);
                         try { File.Move(subFile.FullName, newSubPath); } catch { }
                     }

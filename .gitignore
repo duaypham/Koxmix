@@ -1,14 +1,41 @@
+# Visual Studio & IDE
 .vs/
+.vscode/
 bin/
 obj/
 *.user
+*.suo
+*.userosscache
+*.sln.docstates
+TestResults/
+
+# Build & Publish Outputs
+Publish_SingleExe/
+publish/
+*.exe
+*.zip
+*.nupkg
+
+# Koxmix Runtime Data, Sensitive Cookies & Downloads
 Downloads/
 BrowserData/
 Koxmix_Data/
-Publish_SingleExe/
-*.exe
-*.zip
 app_cookies.txt
-koxmix_config.json
 app_useragent.txt
+koxmix_config.json
 history.txt
+
+# Temporary Download Fragments & Logs
+*.part
+*.ytdl
+*.tmp
+*.temp
+*.crdownload
+*.log
+
+# OS Files
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+!Resources/gallery-dl.exe
