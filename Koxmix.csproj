@@ -1,0 +1,27 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+	<PropertyGroup>
+		<OutputType>WinExe</OutputType>
+		<TargetFramework>net10.0-windows</TargetFramework>
+		<Nullable>disable</Nullable>
+		<UseWindowsForms>true</UseWindowsForms>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<NoWarn>$(NoWarn);MSB3277;CS0618</NoWarn>
+		<AllowedReferenceRelatedFileExtensions>none</AllowedReferenceRelatedFileExtensions>
+	</PropertyGroup>
+	<ItemGroup>
+		<Compile Remove="Logos\**" />
+		<EmbeddedResource Include="Logos\*" />
+		<None Remove="Logos\**" />
+	</ItemGroup>
+	<ItemGroup>
+		<None Remove="gallery-dl.exe" />
+		<EmbeddedResource Include="gallery-dl.exe">
+		  <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+		</EmbeddedResource>
+	</ItemGroup>
+	<ItemGroup>
+		<PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4314.35" />
+		<PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
+		<PackageReference Include="YoutubeDLSharp" Version="1.2.0" />
+	</ItemGroup>
+</Project>
